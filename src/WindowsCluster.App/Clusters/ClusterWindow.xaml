@@ -1,0 +1,78 @@
+<Window x:Class="WindowsCluster.App.Clusters.ClusterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WindowsCluster.App.Clusters"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance local:ClusterViewModel}"
+        Title="{Binding Title}"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="CanResize"
+        MinWidth="160" MinHeight="90"
+        Width="360" Height="240">
+
+    <!-- WindowChrome supplies the native resize borders on a borderless window. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid>
+        <!-- Background layer: only this fades with the Cluster's transparency setting. -->
+        <Border CornerRadius="8"
+                Background="#1E1E1E"
+                BorderBrush="#55FFFFFF"
+                BorderThickness="1"
+                Opacity="{Binding Opacity}" />
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="30" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border x:Name="Header"
+                    Grid.Row="0"
+                    CornerRadius="8,8,0,0"
+                    Background="#33000000"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid Margin="10,0">
+                    <TextBlock x:Name="TitleText"
+                               Text="{Binding Title}"
+                               Foreground="White"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBox x:Name="TitleEditor"
+                             Visibility="Collapsed"
+                             VerticalAlignment="Center"
+                             HorizontalContentAlignment="Center"
+                             FontSize="13"
+                             Background="#CC000000"
+                             Foreground="White"
+                             CaretBrush="White"
+                             BorderBrush="#88FFFFFF"
+                             KeyDown="TitleEditor_KeyDown"
+                             LostKeyboardFocus="TitleEditor_LostKeyboardFocus" />
+                </Grid>
+            </Border>
+
+            <TextBlock Grid.Row="1"
+                       Text="Arrastra íconos aquí (próximo módulo)"
+                       Foreground="#AAFFFFFF"
+                       FontSize="12"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Grid>
+    </Grid>
+</Window>

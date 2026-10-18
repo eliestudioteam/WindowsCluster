@@ -1,0 +1,44 @@
+﻿<Window x:Class="WindowsCluster.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows Cluster — Diagnóstico de escritorio"
+        Width="640" Height="420"
+        WindowStartupLocation="CenterScreen">
+    <!-- Temporary test bench for the DesktopHost module; the full Manager UI comes later. -->
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="DesktopHost" />
+
+        <TextBox x:Name="TopologyText"
+                 DockPanel.Dock="Top"
+                 Margin="0,8,0,0"
+                 IsReadOnly="True"
+                 FontFamily="Consolas"
+                 TextWrapping="Wrap" />
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="Capa:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="ModeCombo" Width="200" SelectedIndex="0">
+                <ComboBoxItem Content="Escritorio (interactiva)" Tag="DesktopLayer" />
+                <ComboBoxItem Content="Fondo / WorkerW (solo visual)" Tag="WallpaperLayer" />
+            </ComboBox>
+            <Button Content="Crear Cluster de prueba" Margin="12,0,0,0" Padding="12,4" Click="CreateCluster_Click" />
+            <Button Content="Refrescar" Margin="8,0,0,0" Padding="12,4" Click="Refresh_Click" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Top" Margin="0,16,0,4" Text="Clusters activos (doble clic en el título del Cluster para renombrarlo):" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Mover a la otra capa" Padding="12,4" Click="ToggleMode_Click" />
+            <Button Content="Eliminar" Margin="8,0,0,0" Padding="12,4" Click="Remove_Click" />
+        </StackPanel>
+        <ListBox x:Name="ClusterList">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Width="180" />
+                        <TextBlock Text="{Binding Mode}" Foreground="Gray" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>
