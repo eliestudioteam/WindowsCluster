@@ -73,11 +73,19 @@ public sealed class DesktopViewState : INotifyPropertyChanged
         var listView = _host.Topology.IconListView;
         if (listView == IntPtr.Zero || !IsWindow(listView))
             listView = _host.Refresh().IconListView;
-        if (listView != IntPtr.Zero)
-            IconsVisible = IsWindowVisible(listView);
+        // View › Show desktop icons is stored as HideIcons. The list view's window visibility
+        // alone did not reflect the setting on Windows build 26300, so the registry decides.
+        IconsVisible = !ReadHideIcons() && (listView == IntPtr.Zero || IsWindowVisible(listView));
 
         if (_icons.GetIconSize() is int size && size > 0)
             IconSize = size;
+    }
+
+    private static bool ReadHideIcons()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
+        return key?.GetValue("HideIcons") is int value && value != 0;
     }
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)

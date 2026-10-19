@@ -108,9 +108,9 @@ public static class ShellContextMenu
         HwndSourceHook? hook = null;
         try
         {
-            // Bound through IShellItemArray from desktop-relative PIDLs: the same menu
-            // Explorer shows for these icons on the desktop.
-            menuObject = ShellItems.BindToHandler(parsingNames, typeof(IContextMenu).GUID);
+            // Desktop-relative PIDLs through the parent folder: the same menu Explorer
+            // shows for these icons on the desktop.
+            menuObject = ShellItems.BindToHandler(parsingNames, typeof(IContextMenu).GUID, owner);
             if (menuObject is not IContextMenu menu)
                 return null;
 

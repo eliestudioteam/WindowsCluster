@@ -21,6 +21,8 @@ public static class NativeMethods
 
     public const long WS_CHILD = 0x40000000L;
     public const long WS_POPUP = 0x80000000L;
+    public const long WS_MAXIMIZEBOX = 0x00010000L;
+    public const long WS_MINIMIZEBOX = 0x00020000L;
     public const long WS_EX_TOOLWINDOW = 0x00000080L;
     public const long WS_EX_APPWINDOW = 0x00040000L;
 
@@ -219,6 +221,10 @@ public static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetCursorPos(out POINT lpPoint);
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);

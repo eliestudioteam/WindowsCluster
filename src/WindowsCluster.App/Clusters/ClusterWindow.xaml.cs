@@ -23,6 +23,9 @@ public partial class ClusterWindow : Window
     private readonly DropTargetHelper _dropHelper = new();
     private ClusterItemViewModel? _anchor;
     private Point? _bandStart;
+    private bool _moving;
+    private POINT _moveCursorStart;
+    private RECT _moveWindowStart;
 
     public ClusterWindow(ClusterViewModel viewModel, ClusterService service, MouseHook mouseHook)
     {
@@ -85,9 +88,35 @@ public partial class ClusterWindow : Window
             return;
         }
 
-        if (TitleEditor.Visibility != Visibility.Visible && e.ButtonState == MouseButtonState.Pressed)
-            DragMove();
+        if (TitleEditor.Visibility == Visibility.Visible)
+            return;
+
+        // Moved by hand instead of DragMove(): DragMove runs the system move loop, which
+        // Windows 11 treats as a normal app window (Snap layouts, edge snapping).
+        GetCursorPos(out _moveCursorStart);
+        GetWindowRect(Hwnd, out _moveWindowStart);
+        _moving = Header.CaptureMouse();
+        e.Handled = true;
     }
+
+    private void Header_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_moving)
+            return;
+        GetCursorPos(out var cursor);
+        SetWindowPos(Hwnd, IntPtr.Zero,
+            _moveWindowStart.Left + cursor.X - _moveCursorStart.X,
+            _moveWindowStart.Top + cursor.Y - _moveCursorStart.Y,
+            0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    private void Header_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_moving)
+            Header.ReleaseMouseCapture();
+    }
+
+    private void Header_LostMouseCapture(object sender, MouseEventArgs e) => _moving = false;
 
     public void BeginTitleEdit()
     {

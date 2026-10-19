@@ -68,6 +68,10 @@ public sealed class DesktopHost : IDisposable
             GetWindowLongPtr(hwnd, GWL_STYLE),
             GetWindowLongPtr(hwnd, GWL_EXSTYLE));
 
+        // Not an app window: no maximize/minimize, so Windows offers no Snap or Win+arrow layouts.
+        SetWindowLongPtr(hwnd, GWL_STYLE,
+            (IntPtr)((long)attachment.OriginalStyle & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX)));
+
         // Hide from Alt+Tab and the taskbar in both modes.
         SetWindowLongPtr(hwnd, GWL_EXSTYLE,
             (IntPtr)(((long)attachment.OriginalExStyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW));
@@ -196,7 +200,7 @@ public sealed class DesktopHost : IDisposable
 
         GetWindowRect(hwnd, out var rect);
 
-        var style = ((long)attachment.OriginalStyle & ~WS_POPUP) | WS_CHILD;
+        var style = ((long)attachment.OriginalStyle & ~(WS_POPUP | WS_MAXIMIZEBOX | WS_MINIMIZEBOX)) | WS_CHILD;
         SetWindowLongPtr(hwnd, GWL_STYLE, (IntPtr)style);
         SetParent(hwnd, workerW);
 

@@ -12,30 +12,32 @@ namespace WindowsCluster.App.Shell;
 /// </summary>
 internal static class ShellItems
 {
-    public static readonly Guid BHID_SFUIObject = new("3981E225-F559-11D3-8E3A-0010A01BA102");
-    public static readonly Guid IID_IShellItem = new("43826D1E-E718-42EE-BC55-A1E261C37BFE");
-
     [ComImport, Guid("000214E6-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellFolder
     {
         [PreserveSig]
         int ParseDisplayName(IntPtr hwnd, IntPtr pbc, [MarshalAs(UnmanagedType.LPWStr)] string pszDisplayName,
             out uint pchEaten, out IntPtr ppidl, ref uint pdwAttributes);
+
+        void _EnumObjects();
+        void _BindToObject();
+        void _BindToStorage();
+        void _CompareIDs();
+        void _CreateViewObject();
+        void _GetAttributesOf();
+
+        // In COM interop an array parameter defaults to a SAFEARRAY; the shell expects a
+        // plain C array of child PIDLs, so LPArray is required (without it: access violation).
+        [PreserveSig]
+        int GetUIObjectOf(IntPtr hwndOwner, uint cidl, [In, MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl,
+            ref Guid riid, IntPtr rgfReserved, [MarshalAs(UnmanagedType.IUnknown)] out object ppv);
     }
 
-    [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    public interface IShellItem
-    {
-        [PreserveSig]
-        int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object ppv);
-    }
+    [DllImport("shell32.dll")]
+    private static extern int SHBindToParent(IntPtr pidl, ref Guid riid,
+        [MarshalAs(UnmanagedType.IUnknown)] out object ppv, out IntPtr ppidlLast);
 
-    [ComImport, Guid("B63EA76D-1F85-456F-A19C-48159EFA858B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    public interface IShellItemArray
-    {
-        [PreserveSig]
-        int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object ppv);
-    }
+    private static readonly Guid IID_IShellFolder = new("000214E6-0000-0000-C000-000000000046");
 
     [ComImport, Guid("00021500-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IQueryInfo
@@ -70,12 +72,6 @@ internal static class ShellItems
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern int SHParseDisplayName(string pszName, IntPtr pbc, out IntPtr ppidl, uint sfgaoIn, out uint psfgaoOut);
 
-    [DllImport("shell32.dll")]
-    private static extern int SHCreateItemFromIDList(IntPtr pidl, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object ppv);
-
-    [DllImport("shell32.dll")]
-    private static extern int SHCreateShellItemArrayFromIDLists(uint cidl, [In] IntPtr[] rgpidl, out IShellItemArray ppsiItemArray);
-
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO lpExecInfo);
 
@@ -109,31 +105,64 @@ internal static class ShellItems
         return SHParseDisplayName(parsingName, IntPtr.Zero, out var fallback, 0, out _) == 0 ? fallback : IntPtr.Zero;
     }
 
-    /// <summary>Binds a handler (IContextMenu, IQueryInfo, …) for one or more items.</summary>
-    public static object? BindToHandler(IReadOnlyList<string> parsingNames, Guid riid)
+    /// <summary>
+    /// Gets a UI object (IContextMenu, IQueryInfo, …) for one or more items through their
+    /// parent folder's GetUIObjectOf, the route Explorer's own views use. Items whose parent
+    /// differs from the first item's are skipped. Returns null on failure.
+    /// </summary>
+    public static object? BindToHandler(IReadOnlyList<string> parsingNames, Guid riid, IntPtr owner = default)
     {
-        var pidls = parsingNames.Select(ParsePidl).ToArray();
+        var pidls = parsingNames.Select(ParsePidl).Where(p => p != IntPtr.Zero).ToArray();
+        object? parent = null;
         try
         {
-            if (pidls.Length == 0 || pidls.Any(p => p == IntPtr.Zero))
+            if (pidls.Length == 0)
                 return null;
-            if (SHCreateShellItemArrayFromIDLists((uint)pidls.Length, pidls, out var array) != 0)
+
+            var children = new List<IntPtr>(pidls.Length);
+            byte[]? parentKey = null;
+            foreach (var pidl in pidls)
+            {
+                var iid = IID_IShellFolder;
+                if (SHBindToParent(pidl, ref iid, out var folder, out var child) != 0)
+                    continue;
+                var key = ParentKey(pidl, child);
+                if (parent is null)
+                {
+                    parent = folder;
+                    parentKey = key;
+                }
+                else
+                {
+                    Marshal.ReleaseComObject(folder);
+                    if (!key.AsSpan().SequenceEqual(parentKey))
+                        continue;
+                }
+                children.Add(child); // points inside pidl, which stays alive until finally
+            }
+            if (parent is not IShellFolder shellFolder || children.Count == 0)
                 return null;
-            try
-            {
-                var bhid = BHID_SFUIObject;
-                return array.BindToHandler(IntPtr.Zero, ref bhid, ref riid, out var handler) == 0 ? handler : null;
-            }
-            finally
-            {
-                Marshal.ReleaseComObject(array);
-            }
+
+            return shellFolder.GetUIObjectOf(owner, (uint)children.Count, children.ToArray(), ref riid, IntPtr.Zero, out var result) == 0
+                ? result
+                : null;
         }
         finally
         {
-            foreach (var pidl in pidls.Where(p => p != IntPtr.Zero))
+            if (parent is not null)
+                Marshal.ReleaseComObject(parent);
+            foreach (var pidl in pidls)
                 Marshal.FreeCoTaskMem(pidl);
         }
+    }
+
+    /// <summary>Bytes of the parent part of an absolute PIDL (everything before the last item).</summary>
+    private static byte[] ParentKey(IntPtr pidl, IntPtr last)
+    {
+        var length = (int)(last.ToInt64() - pidl.ToInt64());
+        var bytes = new byte[length];
+        Marshal.Copy(pidl, bytes, 0, length);
+        return bytes;
     }
 
     /// <summary>Runs the default verb exactly as a double-click on the desktop would.</summary>
