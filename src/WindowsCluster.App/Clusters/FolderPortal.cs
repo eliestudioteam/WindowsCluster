@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Threading;
-using WindowsCluster.App.Shell;
 
 namespace WindowsCluster.App.Clusters;
 
@@ -24,13 +23,13 @@ public sealed class FolderPortal : IDisposable
 
         _watcher = new FileSystemWatcher(folderPath)
         {
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite,
-            IncludeSubdirectories = false,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            IncludeSubdirectories = true,
         };
-        _watcher.Created += (_, _) => QueueReload();
-        _watcher.Deleted += (_, _) => QueueReload();
-        _watcher.Renamed += (_, _) => QueueReload();
-        _watcher.Changed += (_, e) => ShellIconLoader.Shared.Invalidate(e.FullPath);
+        _watcher.Created += (_, e) => OnChanged(e.FullPath, structural: true);
+        _watcher.Deleted += (_, e) => OnChanged(e.FullPath, structural: true);
+        _watcher.Renamed += (_, e) => OnChanged(e.FullPath, structural: true);
+        _watcher.Changed += (_, e) => OnChanged(e.FullPath, structural: false);
         _watcher.EnableRaisingEvents = true;
 
         Reload();
@@ -39,6 +38,24 @@ public sealed class FolderPortal : IDisposable
     public string FolderPath { get; }
 
     public void Dispose() => _watcher.Dispose();
+
+    /// <summary>
+    /// Direct children appearing or disappearing reload the list; anything deeper (or a
+    /// content change) only refreshes the icon of the child it belongs to.
+    /// </summary>
+    private void OnChanged(string path, bool structural)
+    {
+        var isDirectChild = string.Equals(Path.GetDirectoryName(path), FolderPath, StringComparison.OrdinalIgnoreCase);
+        if (structural && isDirectChild)
+        {
+            QueueReload();
+            return;
+        }
+        var child = Path.Combine(FolderPath, Path.GetRelativePath(FolderPath, path).Split(Path.DirectorySeparatorChar)[0]);
+        _dispatcher.BeginInvoke(() => _items
+            .FirstOrDefault(i => string.Equals(i.ParsingName, child, StringComparison.OrdinalIgnoreCase))
+            ?.RequestRefresh());
+    }
 
     private void QueueReload()
     {

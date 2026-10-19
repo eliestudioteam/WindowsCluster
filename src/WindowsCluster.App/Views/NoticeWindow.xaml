@@ -1,0 +1,20 @@
+<Window x:Class="WindowsCluster.App.Views.NoticeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows Cluster"
+        Style="{StaticResource Style.Window}"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Width="420">
+    <!-- Themed replacement for MessageBox, which cannot follow dark mode. -->
+    <StackPanel Margin="24,20,24,20">
+        <TextBlock x:Name="Heading" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock x:Name="Body" Margin="0,10,0,0" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.TextSecondary}" />
+        <Button Content="Aceptar" HorizontalAlignment="Right" Margin="0,20,0,0" MinWidth="96"
+                IsDefault="True" IsCancel="True" Click="Ok_Click" />
+    </StackPanel>
+</Window>

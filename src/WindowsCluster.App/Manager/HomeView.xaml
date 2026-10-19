@@ -1,0 +1,72 @@
+<UserControl x:Class="WindowsCluster.App.Manager.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Bienvenido a Windows Cluster" Style="{StaticResource Style.PageTitle}" />
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}"
+                       Text="Agrupa los íconos de tu escritorio en Clusters: contenedores translúcidos que viven sobre el fondo de pantalla, sin mover ni duplicar tus archivos." />
+
+            <Border Style="{StaticResource Style.Card}" Margin="0,20,0,0"
+                    Visibility="{Binding ShowsHiddenItemsWarning, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource Font.Icons}" FontSize="18"
+                               Foreground="{DynamicResource Brush.Danger}" VerticalAlignment="Top" />
+                    <TextBlock Margin="12,0,0,0" TextWrapping="Wrap" MaxWidth="640"
+                               Text="El Explorador está configurado para mostrar elementos ocultos. Los íconos agrupados en Clusters seguirán viéndose atenuados en el escritorio. Desactiva «Elementos ocultos» en Explorador → Ver → Mostrar." />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="Cómo empezar" Style="{StaticResource Style.SectionTitle}" />
+            <UniformGrid Columns="3">
+                <Border Style="{StaticResource Style.Card}" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="&#xE7C9;" FontFamily="{StaticResource Font.Icons}" FontSize="22"
+                                   Foreground="{DynamicResource Brush.Accent}" />
+                        <TextBlock Text="Dibuja un Cluster" FontWeight="SemiBold" Margin="0,10,0,4" />
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource Brush.TextSecondary}"
+                                   Text="Mantén el clic derecho sobre un área libre del escritorio, arrastra y suelta. Elige «Crear aquí un Cluster»." />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Style.Card}" Margin="4,0">
+                    <StackPanel>
+                        <TextBlock Text="&#xE8B3;" FontFamily="{StaticResource Font.Icons}" FontSize="22"
+                                   Foreground="{DynamicResource Brush.Accent}" />
+                        <TextBlock Text="Agrupa tus íconos" FontWeight="SemiBold" Margin="0,10,0,4" />
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource Brush.TextSecondary}"
+                                   Text="Si el área arrastrada contiene íconos, elige «Crear un Cluster con estos íconos». También puedes soltar archivos sobre un Cluster." />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Style.Card}" Margin="8,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="&#xE790;" FontFamily="{StaticResource Font.Icons}" FontSize="22"
+                                   Foreground="{DynamicResource Brush.Accent}" />
+                        <TextBlock Text="Personaliza" FontWeight="SemiBold" Margin="0,10,0,4" />
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource Brush.TextSecondary}"
+                                   Text="En «Mis Clusters» ajusta transparencia, brillo, saturación, matiz y contraste. Doble clic en el título para renombrar." />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <TextBlock Text="Tus archivos están a salvo" Style="{StaticResource Style.SectionTitle}" />
+            <Border Style="{StaticResource Style.Card}">
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}"
+                           Text="Los Clusters solo ocultan los íconos de la cuadrícula del Explorador mientras están agrupados. Al eliminar un Cluster, sus archivos vuelven al escritorio: nunca se borra nada del disco." />
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
+                <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}">
+                    <Run Text="Clusters activos:" />
+                    <Run Text="{Binding ClusterCount, Mode=OneWay}" FontWeight="SemiBold"
+                         Foreground="{DynamicResource Brush.TextPrimary}" />
+                </TextBlock>
+                <Button Content="Ver mis Clusters" Margin="16,0,0,0" Style="{StaticResource Style.AccentButton}"
+                        Click="OpenClusters_Click" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

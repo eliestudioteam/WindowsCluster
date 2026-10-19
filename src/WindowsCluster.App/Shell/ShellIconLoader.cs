@@ -10,17 +10,19 @@ using static WindowsCluster.App.Interop.ShellInterop;
 namespace WindowsCluster.App.Shell;
 
 /// <summary>
-/// Loads high-resolution shell images (icons, or thumbnails for images/documents) through
-/// IShellItemImageFactory, the same API Explorer uses for its large views. Images are
-/// requested at 256×256 (jumbo) and scaled down by WPF, so they stay sharp at any DPI.
+/// Loads shell images (icons, or thumbnails for images/documents) through
+/// IShellItemImageFactory, the API Explorer uses for its own views.
+///
+/// Images are requested at the exact pixel size they are displayed (icon size × DPI).
+/// Windows icons contain different artwork per size (a text file's 48 px icon shows
+/// lines, its 256 px one is a blank page), so asking for the displayed size yields the
+/// same pixels Explorer draws, perfectly sharp, rather than a scaled-down jumbo image.
 /// Work runs on one dedicated STA thread because shell extensions require it.
 /// </summary>
 public sealed class ShellIconLoader : IDisposable
 {
-    public const int JumboSize = 256;
-
-    private readonly BlockingCollection<(string Path, TaskCompletionSource<ImageSource?> Result)> _queue = new();
-    private readonly ConcurrentDictionary<string, Task<ImageSource?>> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly BlockingCollection<(string Path, int Size, TaskCompletionSource<ImageSource?> Result)> _queue = new();
+    private readonly ConcurrentDictionary<(string Path, int Size), Task<ImageSource?>> _cache = new();
     private readonly Thread _worker;
 
     public ShellIconLoader()
@@ -32,27 +34,32 @@ public sealed class ShellIconLoader : IDisposable
 
     public static ShellIconLoader Shared { get; } = new();
 
-    /// <summary>Returns a frozen 256×256 image for a file path or shell parsing name.</summary>
-    public Task<ImageSource?> GetAsync(string parsingName) =>
-        _cache.GetOrAdd(parsingName, path =>
+    /// <summary>Returns a frozen image of <paramref name="pixelSize"/>² for a file path or parsing name.</summary>
+    public Task<ImageSource?> GetAsync(string parsingName, int pixelSize) =>
+        _cache.GetOrAdd((parsingName.ToUpperInvariant(), pixelSize), key =>
         {
             var tcs = new TaskCompletionSource<ImageSource?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _queue.Add((path, tcs));
+            _queue.Add((parsingName, key.Size, tcs));
             return tcs.Task;
         });
 
-    /// <summary>Drops the cached image, e.g. after the file changed.</summary>
-    public void Invalidate(string parsingName) => _cache.TryRemove(parsingName, out _);
+    /// <summary>Drops every cached size of an item, e.g. after its file or folder content changed.</summary>
+    public void Invalidate(string parsingName)
+    {
+        var path = parsingName.ToUpperInvariant();
+        foreach (var key in _cache.Keys.Where(k => k.Path == path))
+            _cache.TryRemove(key, out _);
+    }
 
     public void Dispose() => _queue.CompleteAdding();
 
     private void Run()
     {
-        foreach (var (path, result) in _queue.GetConsumingEnumerable())
+        foreach (var (path, size, result) in _queue.GetConsumingEnumerable())
         {
             try
             {
-                result.SetResult(Load(path));
+                result.SetResult(Load(path, size));
             }
             catch (Exception ex)
             {
@@ -62,19 +69,19 @@ public sealed class ShellIconLoader : IDisposable
         }
     }
 
-    private static ImageSource? Load(string path)
+    private static ImageSource? Load(string path, int size)
     {
         var iid = IID_IShellItemImageFactory;
         SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var item);
         try
         {
             var factory = (IShellItemImageFactory)item;
-            var size = new ShellInterop.SIZE(JumboSize, JumboSize);
+            var requested = new ShellInterop.SIZE(size, size);
             // ResizeToFit returns a thumbnail when one exists (images, videos, documents)
-            // and the jumbo icon otherwise, matching Explorer's large-icon view.
-            var hr = factory.GetImage(size, SIIGBF.ResizeToFit, out var hbitmap);
+            // and the icon otherwise, matching Explorer's icon views.
+            var hr = factory.GetImage(requested, SIIGBF.ResizeToFit, out var hbitmap);
             if (hr != 0 || hbitmap == IntPtr.Zero)
-                hr = factory.GetImage(size, SIIGBF.IconOnly, out hbitmap);
+                hr = factory.GetImage(requested, SIIGBF.IconOnly, out hbitmap);
             if (hr != 0 || hbitmap == IntPtr.Zero)
                 return null;
 
@@ -93,25 +100,60 @@ public sealed class ShellIconLoader : IDisposable
         }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        public uint bmiColors;
+    }
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint lines, [Out] byte[] bits, ref BITMAPINFO bmi, uint usage);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
     /// <summary>
-    /// Copies a 32-bit DIB section into a WPF bitmap keeping its alpha channel.
-    /// (Imaging.CreateBitmapSourceFromHBitmap drops alpha, which produces black corners.)
+    /// Copies the bitmap as top-down 32-bit BGRA keeping its alpha channel. GetDIBits with a
+    /// negative height lets GDI handle the source orientation, which shell bitmaps do not
+    /// report consistently (reading raw DIB bits flipped some icons upside down).
     /// </summary>
     private static BitmapSource? ToBitmapSource(IntPtr hbitmap)
     {
-        if (GetObject(hbitmap, Marshal.SizeOf<DIBSECTION>(), out var dib) == 0 ||
-            dib.dsBm.bmBits == IntPtr.Zero || dib.dsBm.bmBitsPixel != 32)
+        if (GetObject(hbitmap, Marshal.SizeOf<DIBSECTION>(), out var dib) == 0)
+            return null;
+        var width = dib.dsBm.bmWidth;
+        var height = Math.Abs(dib.dsBm.bmHeight);
+        if (width <= 0 || height <= 0)
             return null;
 
-        var width = dib.dsBm.bmWidth;
-        var height = dib.dsBm.bmHeight;
-        var stride = dib.dsBm.bmWidthBytes;
+        var info = new BITMAPINFO
+        {
+            bmiHeader = new BITMAPINFOHEADER
+            {
+                biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+                biWidth = width,
+                biHeight = -height, // top-down
+                biPlanes = 1,
+                biBitCount = 32,
+                biCompression = 0, // BI_RGB
+            },
+        };
+        var stride = width * 4;
         var pixels = new byte[stride * height];
-        Marshal.Copy(dib.dsBm.bmBits, pixels, 0, pixels.Length);
-
-        // A positive biHeight means the DIB is stored bottom-up.
-        if (dib.dsBmih.biHeight > 0)
-            FlipRows(pixels, stride, height);
+        var hdc = GetDC(IntPtr.Zero);
+        try
+        {
+            if (GetDIBits(hdc, hbitmap, 0, (uint)height, pixels, ref info, 0) == 0)
+                return null;
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, hdc);
+        }
 
         // Some thumbnails carry no alpha at all (every alpha byte is 0): they are opaque.
         if (HasNoAlpha(pixels))
@@ -127,17 +169,6 @@ public sealed class ShellIconLoader : IDisposable
         var bitmap = BitmapSource.Create(width, height, 96, 96, format, null, pixels, stride);
         bitmap.Freeze();
         return bitmap;
-    }
-
-    private static void FlipRows(byte[] pixels, int stride, int height)
-    {
-        var row = new byte[stride];
-        for (int top = 0, bottom = height - 1; top < bottom; top++, bottom--)
-        {
-            Buffer.BlockCopy(pixels, top * stride, row, 0, stride);
-            Buffer.BlockCopy(pixels, bottom * stride, pixels, top * stride, stride);
-            Buffer.BlockCopy(row, 0, pixels, bottom * stride, stride);
-        }
     }
 
     private static bool HasNoAlpha(byte[] bgra)

@@ -14,6 +14,11 @@
     <SolidColorBrush x:Key="Brush.TextSecondary" Color="#9E000000" />
     <SolidColorBrush x:Key="Brush.TextDisabled" Color="#5C000000" />
 
+    <SolidColorBrush x:Key="Brush.NavBackground" Color="#EEEEEE" />
+    <SolidColorBrush x:Key="Brush.PageBackground" Color="#F9F9F9" />
+    <SolidColorBrush x:Key="Brush.Card" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Danger" Color="#C42B1C" />
+
     <SolidColorBrush x:Key="Brush.ClusterBackground" Color="#F2F2F2" />
     <SolidColorBrush x:Key="Brush.ClusterHeader" Color="#14000000" />
     <SolidColorBrush x:Key="Brush.ClusterBorder" Color="#24000000" />

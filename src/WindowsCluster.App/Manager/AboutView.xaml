@@ -1,0 +1,44 @@
+<UserControl x:Class="WindowsCluster.App.Manager.AboutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Acerca de" Style="{StaticResource Style.PageTitle}" />
+
+            <Border Style="{StaticResource Style.Card}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="48" Height="48" CornerRadius="10" Background="{DynamicResource Brush.Accent}">
+                        <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource Font.Icons}" FontSize="24"
+                                   Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Windows Cluster" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Foreground="{DynamicResource Brush.TextSecondary}">
+                            <Run Text="Versión" />
+                            <Run Text="{Binding Version, Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}"
+                       Text="Organizador de escritorio para Windows 10 y 11, escrito en C# y WPF. Proyecto independiente bajo la marca Cluster." />
+
+            <TextBlock Text="Diagnóstico" Style="{StaticResource Style.SectionTitle}" />
+            <Border Style="{StaticResource Style.Card}">
+                <TextBlock Text="{Binding Diagnostics, Mode=OneWay}" FontFamily="Consolas" FontSize="12"
+                           TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" />
+            </Border>
+
+            <TextBlock Text="Cerrar la aplicación" Style="{StaticResource Style.SectionTitle}" />
+            <Border Style="{StaticResource Style.Card}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Salir de Windows Cluster" VerticalAlignment="Center"
+                            Click="Exit_Click" />
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,16,0" Foreground="{DynamicResource Brush.TextSecondary}"
+                               Text="Cerrar esta ventana solo la oculta. Al salir, los Clusters se guardan y vuelven a aparecer la próxima vez que abras Windows Cluster." />
+                </DockPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

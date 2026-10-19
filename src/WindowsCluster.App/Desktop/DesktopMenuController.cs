@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.IO;
-using System.Windows;
 using WindowsCluster.App.Clusters;
 using WindowsCluster.App.Input;
 using WindowsCluster.App.Views;
+using static WindowsCluster.App.Interop.NativeMethods;
 
 namespace WindowsCluster.App.Desktop;
 
@@ -46,14 +46,17 @@ public sealed class DesktopMenuController : IDisposable
             entries.Add(new(GlyphGroup, label, () => CreateClusterWithIcons(drag)));
         }
 
-        ClusterMenu.ShowAt(drag.ReleasePoint, entries, _hook);
+        // Anchor the menu to the outer bottom-right corner of the dragged rectangle, which
+        // stays on screen until the menu closes (choice, Escape or a click elsewhere).
+        var corner = new POINT(drag.Bounds.Right, drag.Bounds.Bottom);
+        var menu = ClusterMenu.ShowAt(corner, entries, _hook);
+        menu.Closed += (_, _) => _gesture.HideSelection();
     }
 
-    private void CreateCluster(DesktopDragResult drag) =>
-        _clusters.CreateAt(drag.Bounds, NextClusterTitle());
+    private void CreateCluster(DesktopDragResult drag) => _clusters.CreateAt(drag.Bounds);
 
-    private void CreateClusterWithIcons(DesktopDragResult drag) =>
-        _clusters.CreateAt(drag.Bounds, NextClusterTitle(), drag.Icons);
+    /// <summary>The selected icons move into the Cluster and leave Explorer's grid (no copies).</summary>
+    private void CreateClusterWithIcons(DesktopDragResult drag) => _clusters.CreateAt(drag.Bounds, icons: drag.Icons);
 
     /// <summary>
     /// Creates a real, empty folder in the user's Desktop folder (honoring OneDrive or
@@ -70,14 +73,11 @@ public sealed class DesktopMenuController : IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Debug.WriteLine($"[DesktopMenu] CreateFolder: {ex.Message}");
-            MessageBox.Show($"No se pudo crear la carpeta:\n{ex.Message}", "Windows Cluster",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            NoticeWindow.Show("No se pudo crear la carpeta", ex.Message);
             return;
         }
         _clusters.CreateAt(drag.Bounds, Path.GetFileName(path), folderPath: path);
     }
-
-    private string NextClusterTitle() => $"Cluster {_clusters.Clusters.Count + 1}";
 
     private static string UniqueFolderPath(string parent, string baseName)
     {

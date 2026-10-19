@@ -40,7 +40,10 @@ public partial class ClusterMenu : Window
         Closed += (_, _) => _hook.MouseEvent -= OnGlobalMouse;
     }
 
-    /// <summary>Opens the menu with its top-left corner at <paramref name="anchor"/> (physical pixels).</summary>
+    /// <summary>
+    /// Opens the menu with its top-left corner at <paramref name="anchor"/> (physical pixels),
+    /// flipping left/up when it would leave the monitor's work area.
+    /// </summary>
     public static ClusterMenu ShowAt(POINT anchor, IEnumerable<MenuEntry> entries, MouseHook hook)
     {
         var menu = new ClusterMenu(entries, hook);

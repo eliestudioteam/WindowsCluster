@@ -1,59 +1,76 @@
-﻿using System.Windows;
+﻿using System.ComponentModel;
+using System.Windows;
 using WindowsCluster.App.Clusters;
-using WindowsCluster.App.Desktop;
+using WindowsCluster.App.Manager;
 
 namespace WindowsCluster.App;
 
+/// <summary>The Manager: left navigation with Inicio, Mis Clusters and Acerca de.</summary>
 public partial class MainWindow : Window
 {
-    private readonly DesktopHost _host;
-    private readonly ClusterService _clusters;
+    private readonly ManagerViewModel _model;
+    private readonly HomeView _home = new();
+    private readonly ClustersView _clusters = new();
+    private readonly AboutView _about = new();
 
-    public MainWindow(DesktopHost host, ClusterService clusters)
+    public MainWindow(ManagerViewModel model)
     {
         InitializeComponent();
-        _host = host;
-        _clusters = clusters;
-        ClusterList.ItemsSource = clusters.Clusters;
-        _host.ShellRestarted += (_, _) => ShowTopology();
-        ShowTopology();
+        _model = model;
+        DataContext = model;
+        _home.DataContext = _clusters.DataContext = _about.DataContext = model;
+        model.PropertyChanged += OnModelChanged;
+        ShowPage(model.Page);
     }
 
-    private EmbedMode SelectedMode =>
-        DesktopLayerOption.IsChecked == true ? EmbedMode.DesktopLayer : EmbedMode.WallpaperLayer;
+    /// <summary>When false, closing the window only hides it so the Clusters stay on the desktop.</summary>
+    public bool AllowClose { get; set; }
 
-    private void ShowTopology() => TopologyText.Text = _host.Topology.ToString();
-
-    private void CreateCluster_Click(object sender, RoutedEventArgs e)
+    public void SelectCluster(ClusterViewModel cluster)
     {
-        try
+        _model.Selected = cluster;
+        _model.Page = ManagerPage.Clusters;
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!AllowClose)
         {
-            _clusters.Create(SelectedMode);
+            e.Cancel = true;
+            Hide();
         }
-        catch (InvalidOperationException ex)
+        base.OnClosing(e);
+    }
+
+    private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ManagerViewModel.Page))
+            ShowPage(_model.Page);
+    }
+
+    private void Nav_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_model is null)
+            return; // raised during InitializeComponent
+        _model.Page = sender == NavClusters ? ManagerPage.Clusters
+            : sender == NavAbout ? ManagerPage.About
+            : ManagerPage.Home;
+    }
+
+    private void ShowPage(ManagerPage page)
+    {
+        PageHost.Content = page switch
         {
-            MessageBox.Show(this, ex.Message, "Windows Cluster", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        ShowTopology();
-    }
-
-    private void Refresh_Click(object sender, RoutedEventArgs e)
-    {
-        _host.Refresh();
-        ShowTopology();
-    }
-
-    private void ToggleMode_Click(object sender, RoutedEventArgs e)
-    {
-        if (ClusterList.SelectedItem is not ClusterViewModel vm)
-            return;
-        var target = vm.Mode == EmbedMode.DesktopLayer ? EmbedMode.WallpaperLayer : EmbedMode.DesktopLayer;
-        _clusters.ChangeMode(vm, target);
-    }
-
-    private void Remove_Click(object sender, RoutedEventArgs e)
-    {
-        if (ClusterList.SelectedItem is ClusterViewModel vm)
-            _clusters.Remove(vm);
+            ManagerPage.Clusters => _clusters,
+            ManagerPage.About => _about,
+            _ => _home,
+        };
+        var nav = page switch
+        {
+            ManagerPage.Clusters => NavClusters,
+            ManagerPage.About => NavAbout,
+            _ => NavHome,
+        };
+        nav.IsChecked = true;
     }
 }

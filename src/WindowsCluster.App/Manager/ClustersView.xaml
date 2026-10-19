@@ -1,0 +1,169 @@
+<UserControl x:Class="WindowsCluster.App.Manager.ClustersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <!-- One labelled slider row: label, value and the slider. -->
+        <Style x:Key="SliderLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="SliderValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+
+        <LinearGradientBrush x:Key="HueGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Offset="0.000" Color="#FF0000" />
+            <GradientStop Offset="0.167" Color="#FFFF00" />
+            <GradientStop Offset="0.333" Color="#00FF00" />
+            <GradientStop Offset="0.500" Color="#00FFFF" />
+            <GradientStop Offset="0.667" Color="#0000FF" />
+            <GradientStop Offset="0.833" Color="#FF00FF" />
+            <GradientStop Offset="1.000" Color="#FF0000" />
+        </LinearGradientBrush>
+    </UserControl.Resources>
+
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button DockPanel.Dock="Right" Style="{StaticResource Style.AccentButton}" VerticalAlignment="Center"
+                    Click="NewCluster_Click">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource Font.Icons}" Foreground="White"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="Nuevo Cluster" Margin="8,0,0,0" Foreground="White" />
+                </StackPanel>
+            </Button>
+            <TextBlock Text="Mis Clusters" Style="{StaticResource Style.PageTitle}" Margin="0" />
+        </DockPanel>
+
+        <!-- Empty state -->
+        <Border DockPanel.Dock="Top" Style="{StaticResource Style.Card}" Margin="0,12,0,0"
+                Visibility="{Binding HasNoClusters, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}"
+                       Text="Aún no tienes Clusters. Arrastra con el clic derecho sobre el escritorio o pulsa «Nuevo Cluster»." />
+        </Border>
+
+        <Grid Margin="0,12,0,0" Visibility="{Binding HasClusters, Converter={StaticResource BoolToVisibility}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <ListBox Grid.Column="0" ItemsSource="{Binding Clusters}" SelectedItem="{Binding Selected}"
+                     BorderThickness="1">
+                <ListBox.Template>
+                    <ControlTemplate TargetType="ListBox">
+                        <Border CornerRadius="8" Padding="4" Background="{DynamicResource Brush.Card}"
+                                BorderBrush="{DynamicResource Brush.SurfaceBorder}" BorderThickness="1">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsPresenter />
+                            </ScrollViewer>
+                        </Border>
+                    </ControlTemplate>
+                </ListBox.Template>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center"
+                                    Background="{Binding BackgroundBrush}" BorderBrush="{Binding BorderBrush}"
+                                    BorderThickness="1" />
+                            <StackPanel Margin="10,0,0,0">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}">
+                                    <Run Text="{Binding Items.Count, Mode=OneWay}" />
+                                    <Run Text="elementos" />
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel DataContext="{Binding Selected}" Margin="0,0,8,0">
+                    <Border Style="{StaticResource Style.Card}">
+                        <StackPanel>
+                            <TextBlock Text="Nombre" FontWeight="SemiBold" />
+                            <TextBox Margin="0,8,0,0" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}"
+                                       Text="También puedes hacer doble clic en el título del Cluster, directamente en el escritorio." />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="Apariencia" Style="{StaticResource Style.SectionTitle}" />
+                    <Border Style="{StaticResource Style.Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="52" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="40" />
+                                <RowDefinition Height="40" />
+                                <RowDefinition Height="40" />
+                                <RowDefinition Height="40" />
+                                <RowDefinition Height="40" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="Transparencia" Style="{StaticResource SliderLabel}" />
+                            <Slider Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="90" Value="{Binding Transparency}" />
+                            <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource SliderValue}"
+                                       Text="{Binding Transparency, StringFormat={}{0:0} %}" />
+
+                            <TextBlock Grid.Row="1" Text="Brillo" Style="{StaticResource SliderLabel}" />
+                            <Slider Grid.Row="1" Grid.Column="1" Minimum="-50" Maximum="50" Value="{Binding Brightness}" />
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource SliderValue}"
+                                       Text="{Binding Brightness, StringFormat={}{0:+0;-0;0}}" />
+
+                            <TextBlock Grid.Row="2" Text="Saturación" Style="{StaticResource SliderLabel}" />
+                            <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding Saturation}" />
+                            <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource SliderValue}"
+                                       Text="{Binding Saturation, StringFormat={}{0:0} %}" />
+
+                            <TextBlock Grid.Row="3" Text="Matiz" Style="{StaticResource SliderLabel}" />
+                            <Slider Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="360" Value="{Binding Hue}"
+                                    Foreground="Transparent" Background="Transparent"
+                                    BorderBrush="{StaticResource HueGradient}" />
+                            <TextBlock Grid.Row="3" Grid.Column="2" Style="{StaticResource SliderValue}"
+                                       Text="{Binding Hue, StringFormat={}{0:0}°}" />
+
+                            <TextBlock Grid.Row="4" Text="Contraste" Style="{StaticResource SliderLabel}" />
+                            <Slider Grid.Row="4" Grid.Column="1" Minimum="-50" Maximum="50" Value="{Binding Contrast}" />
+                            <TextBlock Grid.Row="4" Grid.Column="2" Style="{StaticResource SliderValue}"
+                                       Text="{Binding Contrast, StringFormat={}{0:+0;-0;0}}" />
+                        </Grid>
+                    </Border>
+                    <TextBlock Margin="2,6,0,0" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" TextWrapping="Wrap"
+                               Text="El matiz se aprecia al subir la saturación. El brillo es relativo al modo claro u oscuro de Windows." />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button Content="Restablecer apariencia" Click="Reset_Click" />
+                    </StackPanel>
+
+                    <TextBlock Text="Eliminar" Style="{StaticResource Style.SectionTitle}" />
+                    <Border Style="{StaticResource Style.Card}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource Style.DangerButton}"
+                                    VerticalAlignment="Center" Click="Delete_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74D;" FontFamily="{StaticResource Font.Icons}"
+                                               Foreground="{DynamicResource Brush.Danger}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Eliminar Cluster" Margin="8,0,0,0" Foreground="{DynamicResource Brush.Danger}" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,16,0" Foreground="{DynamicResource Brush.TextSecondary}"
+                                       Text="Los archivos del Cluster vuelven a la cuadrícula del escritorio. Nada se borra del disco." />
+                        </DockPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</UserControl>

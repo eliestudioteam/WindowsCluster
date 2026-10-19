@@ -9,8 +9,7 @@ namespace WindowsCluster.App.Input;
 /// <summary>Result of a right-button drag over empty desktop space.</summary>
 /// <param name="Bounds">Dragged rectangle in physical screen pixels.</param>
 /// <param name="Icons">Desktop icons inside the rectangle (now selected in Explorer).</param>
-/// <param name="ReleasePoint">Where the button was released, in physical screen pixels.</param>
-public sealed record DesktopDragResult(RECT Bounds, IReadOnlyList<DesktopIcon> Icons, POINT ReleasePoint);
+public sealed record DesktopDragResult(RECT Bounds, IReadOnlyList<DesktopIcon> Icons);
 
 /// <summary>
 /// Detects "right-press on empty desktop space, drag, release".
@@ -54,6 +53,12 @@ public sealed class DesktopDragGesture : IDisposable
 
     public event EventHandler<DesktopDragResult>? DragCompleted;
 
+    /// <summary>
+    /// Hides the selection rectangle. After a drag it stays on screen until the menu
+    /// that answers it closes, so the owner of that menu calls this.
+    /// </summary>
+    public void HideSelection() => _overlay?.Hide();
+
     public void Dispose()
     {
         _hook.MouseEvent -= OnMouseEvent;
@@ -69,6 +74,7 @@ public sealed class DesktopDragGesture : IDisposable
         switch (e.Message)
         {
             case WM_RBUTTONDOWN when _state == State.Idle && IsDesktopIconList(e.Point):
+                _dispatcher.BeginInvoke(HideSelection);
                 _state = State.Pending;
                 _start = _current = e.Point;
                 _dragging = false;
@@ -126,7 +132,7 @@ public sealed class DesktopDragGesture : IDisposable
         if (_state != State.Pending)
             return;
 
-        if (_icons.HitTest(_start) is not null)
+        if (DesktopIconService.IsOverIcon(_start))
         {
             _state = State.PassThrough;
             Replay(MOUSEEVENTF_RIGHTDOWN);
@@ -170,11 +176,13 @@ public sealed class DesktopDragGesture : IDisposable
 
     private void Complete()
     {
-        _overlay?.Hide();
+        // The rectangle stays visible (see HideSelection) while the menu is open.
         var rect = CurrentRect();
+        _overlay ??= new SelectionOverlay();
+        _overlay.ShowAt(rect);
         var icons = _icons.GetIcons().Where(i => i.IntersectsWith(rect)).ToList();
         _icons.Select(icons);
-        DragCompleted?.Invoke(this, new DesktopDragResult(rect, icons, _current));
+        DragCompleted?.Invoke(this, new DesktopDragResult(rect, icons));
     }
 
     /// <summary>A plain right-click on empty space: give Explorer its click back.</summary>

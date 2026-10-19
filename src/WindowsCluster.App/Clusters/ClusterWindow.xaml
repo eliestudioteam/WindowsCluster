@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WindowsCluster.App.Clusters"
+        xmlns:desktop="clr-namespace:WindowsCluster.App.Desktop"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:ClusterViewModel}"
         Title="{Binding Title}"
@@ -13,9 +14,28 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         ResizeMode="CanResize"
+        AllowDrop="True"
+        DragEnter="Window_DragEnter"
+        DragOver="Window_DragOver"
+        DragLeave="Window_DragLeave"
+        Drop="Window_Drop"
+        PreviewKeyDown="Window_PreviewKeyDown"
         MinWidth="160" MinHeight="90"
         Width="360" Height="240"
-        FontFamily="{StaticResource Font.Text}">
+        FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <!-- Explorer's desktop item states (Windows 11). -->
+        <SolidColorBrush x:Key="Item.HoverFill" Color="#1FFFFFFF" />
+        <SolidColorBrush x:Key="Item.HoverBorder" Color="#33FFFFFF" />
+        <SolidColorBrush x:Key="Item.SelectedFill" Color="#4D99CCFF" />
+        <SolidColorBrush x:Key="Item.SelectedBorder" Color="#8099CCFF" />
+        <SolidColorBrush x:Key="Item.SelectedHoverFill" Color="#6699CCFF" />
+        <SolidColorBrush x:Key="Band.Fill" Color="#4D3399FF" />
+        <SolidColorBrush x:Key="Band.Border" Color="#CC3399FF" />
+    </Window.Resources>
 
     <!-- WindowChrome supplies the native resize borders on a borderless window. -->
     <WindowChrome.WindowChrome>
@@ -29,10 +49,11 @@
     <Grid>
         <!-- Background layer: only this fades with the Cluster's transparency setting. -->
         <Border CornerRadius="8"
-                Background="{DynamicResource Brush.ClusterBackground}"
-                BorderBrush="{DynamicResource Brush.ClusterBorder}"
-                BorderThickness="1"
-                Opacity="{Binding Opacity}" />
+                Background="{Binding BackgroundBrush}"
+                Opacity="{Binding BackgroundOpacity}" />
+        <Border CornerRadius="8"
+                BorderBrush="{Binding BorderBrush}"
+                BorderThickness="1" />
 
         <Grid>
             <Grid.RowDefinitions>
@@ -43,12 +64,13 @@
             <Border x:Name="Header"
                     Grid.Row="0"
                     CornerRadius="8,8,0,0"
-                    Background="{DynamicResource Brush.ClusterHeader}"
+                    Background="{Binding HeaderBrush}"
                     MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Grid Margin="10,0">
                     <TextBlock x:Name="TitleText"
                                Text="{Binding Title}"
-                               Foreground="{DynamicResource Brush.ClusterText}"
+                               Foreground="{Binding TextBrush}"
+                               Effect="{Binding LabelEffect}"
                                FontSize="13"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"
@@ -67,57 +89,115 @@
 
             <TextBlock Grid.Row="1"
                        x:Name="EmptyHint"
-                       Text="Este Cluster está vacío"
-                       Foreground="{DynamicResource Brush.TextSecondary}"
+                       Text="Arrastra archivos aquí"
+                       Foreground="{Binding TextBrush}"
+                       Effect="{Binding LabelEffect}"
+                       Opacity="0.7"
                        FontSize="12"
                        HorizontalAlignment="Center"
-                       VerticalAlignment="Center" />
+                       VerticalAlignment="Center"
+                       IsHitTestVisible="False" />
 
-            <ScrollViewer Grid.Row="1"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Padding="6">
-                <ItemsControl ItemsSource="{Binding Items}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type local:ClusterItemViewModel}">
-                            <Border x:Name="ItemBorder"
-                                    Width="84"
-                                    Margin="2"
-                                    Padding="4,6"
-                                    CornerRadius="6"
-                                    Background="Transparent"
-                                    ToolTip="{Binding DisplayName}"
-                                    MouseLeftButtonDown="Item_MouseLeftButtonDown">
-                                <StackPanel>
-                                    <!-- 256 px source scaled down with high-quality filtering: sharp at any DPI. -->
-                                    <Image Source="{Binding Icon}"
-                                           Width="48" Height="48"
-                                           RenderOptions.BitmapScalingMode="HighQuality"
-                                           SnapsToDevicePixels="True" />
-                                    <TextBlock Text="{Binding DisplayName}"
-                                               Margin="0,4,0,0"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource Brush.ClusterText}"
-                                               TextAlignment="Center"
-                                               TextWrapping="Wrap"
-                                               TextTrimming="CharacterEllipsis"
-                                               MaxHeight="32" />
-                                </StackPanel>
-                            </Border>
-                            <DataTemplate.Triggers>
-                                <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush.ClusterItemHover}" />
-                                </Trigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <Grid Grid.Row="1" x:Name="Body"
+                  Background="Transparent"
+                  MouseLeftButtonDown="Body_MouseLeftButtonDown"
+                  MouseMove="Body_MouseMove"
+                  MouseLeftButtonUp="Body_MouseLeftButtonUp"
+                  MouseRightButtonUp="Body_MouseRightButtonUp">
+                <ScrollViewer x:Name="Scroller"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="4">
+                    <ItemsControl x:Name="ItemsHost" ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:ClusterItemViewModel}">
+                                <Border x:Name="ItemBorder"
+                                        Width="{Binding ItemWidth, Source={x:Static desktop:DesktopViewState.Current}}"
+                                        Margin="1"
+                                        Padding="2,4,2,4"
+                                        CornerRadius="3"
+                                        BorderThickness="1"
+                                        BorderBrush="Transparent"
+                                        Background="Transparent"
+                                        ToolTip="{Binding InfoTip}"
+                                        ToolTipService.InitialShowDelay="600"
+                                        MouseLeftButtonDown="Item_MouseLeftButtonDown"
+                                        MouseRightButtonUp="Item_MouseRightButtonUp">
+                                    <StackPanel>
+                                        <!-- Requested at the exact displayed pixel size: Explorer's own artwork. -->
+                                        <Image Source="{Binding Icon}"
+                                               Width="{Binding IconSize, Source={x:Static desktop:DesktopViewState.Current}}"
+                                               Height="{Binding IconSize, Source={x:Static desktop:DesktopViewState.Current}}"
+                                               RenderOptions.BitmapScalingMode="HighQuality"
+                                               SnapsToDevicePixels="True"
+                                               UseLayoutRounding="True" />
+                                        <Grid Margin="0,3,0,0">
+                                            <TextBlock x:Name="Label"
+                                                       Text="{Binding DisplayName}"
+                                                       FontSize="12"
+                                                       Foreground="{Binding DataContext.TextBrush, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       Effect="{Binding DataContext.LabelEffect, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       TextAlignment="Center"
+                                                       TextWrapping="Wrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxHeight="32" />
+                                            <TextBox Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVisibility}}"
+                                                     Text="{Binding DisplayName, Mode=OneWay}"
+                                                     FontSize="12"
+                                                     Padding="2,1"
+                                                     TextWrapping="Wrap"
+                                                     IsVisibleChanged="RenameBox_IsVisibleChanged"
+                                                     KeyDown="RenameBox_KeyDown"
+                                                     LostKeyboardFocus="RenameBox_LostKeyboardFocus" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource Item.HoverFill}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource Item.HoverBorder}" />
+                                    </Trigger>
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource Item.SelectedFill}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource Item.SelectedBorder}" />
+                                        <!-- Selected items show their full name, like Explorer. -->
+                                        <Setter TargetName="Label" Property="MaxHeight" Value="1000" />
+                                    </DataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsSelected}" Value="True" />
+                                            <Condition Binding="{Binding IsMouseOver, ElementName=ItemBorder}" Value="True" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource Item.SelectedHoverFill}" />
+                                    </MultiDataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Left-button rubber band, drawn like Explorer's. -->
+                <Canvas IsHitTestVisible="False">
+                    <Rectangle x:Name="Band"
+                               Visibility="Collapsed"
+                               Fill="{StaticResource Band.Fill}"
+                               Stroke="{StaticResource Band.Border}"
+                               StrokeThickness="1" />
+                </Canvas>
+            </Grid>
         </Grid>
+
+        <!-- Drop target highlight. -->
+        <Border x:Name="DropHighlight"
+                CornerRadius="8"
+                BorderThickness="2"
+                BorderBrush="{DynamicResource Brush.Accent}"
+                IsHitTestVisible="False"
+                Visibility="Collapsed" />
     </Grid>
 </Window>

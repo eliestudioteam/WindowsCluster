@@ -1,43 +1,46 @@
 ﻿<Window x:Class="WindowsCluster.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Windows Cluster — Diagnóstico de escritorio"
-        Width="640" Height="420"
+        xmlns:manager="clr-namespace:WindowsCluster.App.Manager"
+        Title="Windows Cluster"
+        Width="980" Height="640"
+        MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterScreen"
         Style="{StaticResource Style.Window}">
-    <!-- Temporary test bench for the DesktopHost module; the full Manager UI comes later. -->
-    <DockPanel Margin="16">
-        <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="DesktopHost" />
 
-        <TextBox x:Name="TopologyText"
-                 DockPanel.Dock="Top"
-                 Margin="0,8,0,0"
-                 IsReadOnly="True"
-                 FontFamily="Consolas"
-                 TextWrapping="Wrap" />
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="232" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,12,0,0">
-            <TextBlock Text="Capa:" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <RadioButton x:Name="DesktopLayerOption" Content="Escritorio" IsChecked="True" GroupName="Layer" />
-            <RadioButton Content="Fondo / WorkerW" Margin="6,0,0,0" GroupName="Layer" />
-            <Button Content="Crear Cluster de prueba" Margin="12,0,0,0" Padding="12,4" Click="CreateCluster_Click" />
-            <Button Content="Refrescar" Margin="8,0,0,0" Padding="12,4" Click="Refresh_Click" />
-        </StackPanel>
+        <!-- Left navigation -->
+        <DockPanel Grid.Column="0" Background="{DynamicResource Brush.NavBackground}">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="20,22,16,18">
+                <Border Width="28" Height="28" CornerRadius="6" Background="{DynamicResource Brush.Accent}">
+                    <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource Font.Icons}" FontSize="15"
+                               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="Windows Cluster" Margin="10,0,0,0" FontSize="15" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+            </StackPanel>
 
-        <TextBlock DockPanel.Dock="Top" Margin="0,16,0,4" Text="Clusters activos. Arrastra con clic derecho sobre el escritorio para crear uno." />
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-            <Button Content="Mover a la otra capa" Padding="12,4" Click="ToggleMode_Click" />
-            <Button Content="Eliminar" Margin="8,0,0,0" Padding="12,4" Click="Remove_Click" />
-        </StackPanel>
-        <ListBox x:Name="ClusterList">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Width="180" />
-                        <TextBlock Text="{Binding Mode}" Foreground="{DynamicResource Brush.TextSecondary}" />
-                    </StackPanel>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
-    </DockPanel>
+            <RadioButton DockPanel.Dock="Bottom" x:Name="NavAbout" Style="{StaticResource Style.NavButton}"
+                         GroupName="Nav" Tag="&#xE946;" Content="Acerca de" Margin="8,0,8,12"
+                         Checked="Nav_Checked" />
+
+            <StackPanel Margin="8,0">
+                <RadioButton x:Name="NavHome" Style="{StaticResource Style.NavButton}" GroupName="Nav"
+                             Tag="&#xE80F;" Content="Inicio" IsChecked="True" Checked="Nav_Checked" />
+                <RadioButton x:Name="NavClusters" Style="{StaticResource Style.NavButton}" GroupName="Nav"
+                             Tag="&#xF0E2;" Content="Mis Clusters" Checked="Nav_Checked" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Page content -->
+        <Border Grid.Column="1" Background="{DynamicResource Brush.PageBackground}"
+                BorderBrush="{DynamicResource Brush.SurfaceBorder}" BorderThickness="1,0,0,0">
+            <ContentControl x:Name="PageHost" Margin="32,24,32,24" />
+        </Border>
+    </Grid>
 </Window>

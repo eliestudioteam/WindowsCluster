@@ -54,8 +54,41 @@ public sealed class DesktopIconService
         }
     }
 
-    public DesktopIcon? HitTest(POINT screenPoint) =>
-        GetIcons().FirstOrDefault(i => i.Contains(screenPoint));
+    /// <summary>
+    /// True when an icon (not empty space) is under <paramref name="screenPoint"/>.
+    /// Uses the list view's accessibility object, which reports the exact item hit;
+    /// the grid cells from IFolderView are larger than the icons and would misreport.
+    /// </summary>
+    public static bool IsOverIcon(POINT screenPoint)
+    {
+        if (AccessibleObjectFromPoint(screenPoint, out var accessible, out var child) != 0)
+            return false;
+        if (accessible is not null)
+            Marshal.ReleaseComObject(accessible);
+        return child is int id && id != 0; // CHILDID_SELF (0) means the list itself
+    }
+
+    [DllImport("oleacc.dll")]
+    private static extern int AccessibleObjectFromPoint(POINT pt,
+        [MarshalAs(UnmanagedType.Interface)] out object? ppacc, out object? pvarChild);
+
+    /// <summary>Desktop icon size in logical pixels (32 small, 48 medium, 96 large), or null if unknown.</summary>
+    public int? GetIconSize()
+    {
+        try
+        {
+            if (GetView() is IFolderView2 view)
+            {
+                view.GetViewModeAndIconSize(out _, out var size);
+                return size;
+            }
+        }
+        catch (COMException)
+        {
+            _view = null;
+        }
+        return null;
+    }
 
     /// <summary>Selects exactly <paramref name="icons"/> in Explorer, as its own rubber band would.</summary>
     public void Select(IReadOnlyList<DesktopIcon> icons)
@@ -94,6 +127,7 @@ public sealed class DesktopIconService
         {
             view.GetSpacing(out var spacing);
             view.ItemCount(SVGIO_ALLVIEW, out var count);
+            var drawn = ReadDrawnBounds(listView);
             var icons = new List<DesktopIcon>(count);
             for (var i = 0; i < count; i++)
             {
@@ -110,7 +144,10 @@ public sealed class DesktopIconService
                         var display = GetName(absolute, SIGDN_NORMALDISPLAY) ?? parsing;
                         if (parsing is null)
                             continue;
-                        var bounds = new RECT { Left = pos.X, Top = pos.Y, Right = pos.X + spacing.X, Bottom = pos.Y + spacing.Y };
+                        // Prefer the rectangle Explorer actually draws (icon + label); the grid
+                        // cell from IFolderView is wider and caught neighbouring icons.
+                        var bounds = MatchDrawnBounds(drawn, i, display!)
+                            ?? new RECT { Left = pos.X, Top = pos.Y, Right = pos.X + spacing.X, Bottom = pos.Y + spacing.Y };
                         icons.Add(new DesktopIcon(i, parsing, display!, bounds));
                     }
                     finally
@@ -129,6 +166,58 @@ public sealed class DesktopIconService
         {
             Marshal.FreeCoTaskMem(folderPidl);
         }
+    }
+
+    private static readonly Guid IID_IAccessible = new("618736E0-3C3D-11CF-810C-00AA00389B71");
+    private const uint OBJID_CLIENT = 0xFFFFFFFC;
+
+    [DllImport("oleacc.dll")]
+    private static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint dwObjectId, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out object? ppvObject);
+
+    /// <summary>
+    /// Screen rectangles of every list item as Explorer draws them, read through the list
+    /// view's accessibility object (child N is list item N−1). Same order as IFolderView.
+    /// </summary>
+    private static List<(string Name, RECT Bounds)> ReadDrawnBounds(IntPtr listView)
+    {
+        var result = new List<(string, RECT)>();
+        var iid = IID_IAccessible;
+        if (listView == IntPtr.Zero ||
+            AccessibleObjectFromWindow(listView, OBJID_CLIENT, ref iid, out var obj) != 0 ||
+            obj is not Accessibility.IAccessible accessible)
+            return result;
+        try
+        {
+            var count = accessible.accChildCount;
+            for (var child = 1; child <= count; child++)
+            {
+                accessible.accLocation(out var left, out var top, out var width, out var height, child);
+                var name = accessible.get_accName(child) as string ?? "";
+                result.Add((name, new RECT { Left = left, Top = top, Right = left + width, Bottom = top + height }));
+            }
+        }
+        catch (Exception ex) when (ex is COMException or ArgumentException)
+        {
+            Debug.WriteLine($"[DesktopIconService] Accessible bounds: {ex.Message}");
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(accessible);
+        }
+        return result;
+    }
+
+    private static RECT? MatchDrawnBounds(List<(string Name, RECT Bounds)> drawn, int index, string displayName)
+    {
+        if (index < drawn.Count && drawn[index].Name == displayName)
+            return drawn[index].Bounds;
+        foreach (var (name, bounds) in drawn)
+        {
+            if (name == displayName)
+                return bounds;
+        }
+        return null;
     }
 
     private static IntPtr GetFolderPidl(IFolderView view)

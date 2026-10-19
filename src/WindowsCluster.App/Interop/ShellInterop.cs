@@ -110,6 +110,21 @@ internal static class ShellInterop
         void SelectItem(int iItem, uint dwFlags);
     }
 
+    /// <summary>
+    /// Only GetViewModeAndIconSize is used: IFolderView's 14 methods and the 19 IFolderView2
+    /// methods before it are placeholders (slot verified against the live desktop view).
+    /// </summary>
+    [ComImport, Guid("1AF3A467-214F-4298-908E-06B03E0B39F9"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IFolderView2
+    {
+        void _f01(); void _f02(); void _f03(); void _f04(); void _f05(); void _f06(); void _f07();
+        void _f08(); void _f09(); void _f10(); void _f11(); void _f12(); void _f13(); void _f14();
+        void _g01(); void _g02(); void _g03(); void _g04(); void _g05(); void _g06(); void _g07();
+        void _g08(); void _g09(); void _g10(); void _g11(); void _g12(); void _g13(); void _g14();
+        void _g15(); void _g16(); void _g17(); void _g18(); void _g19();
+        void GetViewModeAndIconSize(out uint pvm, out int piImageSize);
+    }
+
     [ComImport, Guid("1AC3D9F0-175C-11D1-95BE-00609797EA4F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IPersistFolder2
     {
