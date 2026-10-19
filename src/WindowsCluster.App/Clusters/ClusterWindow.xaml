@@ -14,7 +14,8 @@
         ShowActivated="False"
         ResizeMode="CanResize"
         MinWidth="160" MinHeight="90"
-        Width="360" Height="240">
+        Width="360" Height="240"
+        FontFamily="{StaticResource Font.Text}">
 
     <!-- WindowChrome supplies the native resize borders on a borderless window. -->
     <WindowChrome.WindowChrome>
@@ -28,8 +29,8 @@
     <Grid>
         <!-- Background layer: only this fades with the Cluster's transparency setting. -->
         <Border CornerRadius="8"
-                Background="#1E1E1E"
-                BorderBrush="#55FFFFFF"
+                Background="{DynamicResource Brush.ClusterBackground}"
+                BorderBrush="{DynamicResource Brush.ClusterBorder}"
                 BorderThickness="1"
                 Opacity="{Binding Opacity}" />
 
@@ -42,12 +43,12 @@
             <Border x:Name="Header"
                     Grid.Row="0"
                     CornerRadius="8,8,0,0"
-                    Background="#33000000"
+                    Background="{DynamicResource Brush.ClusterHeader}"
                     MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Grid Margin="10,0">
                     <TextBlock x:Name="TitleText"
                                Text="{Binding Title}"
-                               Foreground="White"
+                               Foreground="{DynamicResource Brush.ClusterText}"
                                FontSize="13"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"
@@ -58,21 +59,65 @@
                              VerticalAlignment="Center"
                              HorizontalContentAlignment="Center"
                              FontSize="13"
-                             Background="#CC000000"
-                             Foreground="White"
-                             CaretBrush="White"
-                             BorderBrush="#88FFFFFF"
+                             Padding="4,1"
                              KeyDown="TitleEditor_KeyDown"
                              LostKeyboardFocus="TitleEditor_LostKeyboardFocus" />
                 </Grid>
             </Border>
 
             <TextBlock Grid.Row="1"
-                       Text="Arrastra íconos aquí (próximo módulo)"
-                       Foreground="#AAFFFFFF"
+                       x:Name="EmptyHint"
+                       Text="Este Cluster está vacío"
+                       Foreground="{DynamicResource Brush.TextSecondary}"
                        FontSize="12"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center" />
+
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="6">
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type local:ClusterItemViewModel}">
+                            <Border x:Name="ItemBorder"
+                                    Width="84"
+                                    Margin="2"
+                                    Padding="4,6"
+                                    CornerRadius="6"
+                                    Background="Transparent"
+                                    ToolTip="{Binding DisplayName}"
+                                    MouseLeftButtonDown="Item_MouseLeftButtonDown">
+                                <StackPanel>
+                                    <!-- 256 px source scaled down with high-quality filtering: sharp at any DPI. -->
+                                    <Image Source="{Binding Icon}"
+                                           Width="48" Height="48"
+                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                           SnapsToDevicePixels="True" />
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               Margin="0,4,0,0"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Brush.ClusterText}"
+                                               TextAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="32" />
+                                </StackPanel>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush.ClusterItemHover}" />
+                                </Trigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </Window>

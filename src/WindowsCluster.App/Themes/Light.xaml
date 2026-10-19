@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Windows 11 light palette. Accent-derived brushes are set at runtime by ThemeService. -->
+    <SolidColorBrush x:Key="Brush.WindowBackground" Color="#F3F3F3" />
+    <SolidColorBrush x:Key="Brush.Surface" Color="#F9F9F9" />
+    <SolidColorBrush x:Key="Brush.SurfaceBorder" Color="#0F000000" />
+    <SolidColorBrush x:Key="Brush.ControlFill" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="Brush.ControlFillHover" Color="#80F9F9F9" />
+    <SolidColorBrush x:Key="Brush.ControlBorder" Color="#0F000000" />
+    <SolidColorBrush x:Key="Brush.HoverFill" Color="#09000000" />
+    <SolidColorBrush x:Key="Brush.PressedFill" Color="#06000000" />
+    <SolidColorBrush x:Key="Brush.Separator" Color="#0F000000" />
+    <SolidColorBrush x:Key="Brush.TextPrimary" Color="#E4000000" />
+    <SolidColorBrush x:Key="Brush.TextSecondary" Color="#9E000000" />
+    <SolidColorBrush x:Key="Brush.TextDisabled" Color="#5C000000" />
+
+    <SolidColorBrush x:Key="Brush.ClusterBackground" Color="#F2F2F2" />
+    <SolidColorBrush x:Key="Brush.ClusterHeader" Color="#14000000" />
+    <SolidColorBrush x:Key="Brush.ClusterBorder" Color="#24000000" />
+    <SolidColorBrush x:Key="Brush.ClusterText" Color="#E4000000" />
+    <SolidColorBrush x:Key="Brush.ClusterItemHover" Color="#14000000" />
+
+    <Color x:Key="Color.Shadow">#40000000</Color>
+</ResourceDictionary>

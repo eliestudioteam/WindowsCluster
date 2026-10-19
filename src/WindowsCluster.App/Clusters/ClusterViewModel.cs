@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -43,6 +44,12 @@ public sealed class ClusterViewModel : INotifyPropertyChanged
         get => _mode;
         set => Set(ref _mode, value);
     }
+
+    /// <summary>Items shown in the Cluster: references to real shell items.</summary>
+    public ObservableCollection<ClusterItemViewModel> Items { get; } = new();
+
+    /// <summary>When set, <see cref="Items"/> mirrors this real folder.</summary>
+    public FolderPortal? Portal { get; set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

@@ -1,5 +1,4 @@
 ﻿using System.Windows;
-using System.Windows.Controls;
 using WindowsCluster.App.Clusters;
 using WindowsCluster.App.Desktop;
 
@@ -21,7 +20,7 @@ public partial class MainWindow : Window
     }
 
     private EmbedMode SelectedMode =>
-        Enum.Parse<EmbedMode>((string)((ComboBoxItem)ModeCombo.SelectedItem).Tag);
+        DesktopLayerOption.IsChecked == true ? EmbedMode.DesktopLayer : EmbedMode.WallpaperLayer;
 
     private void ShowTopology() => TopologyText.Text = _host.Topology.ToString();
 

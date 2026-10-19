@@ -1,6 +1,9 @@
+using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using WindowsCluster.App.Desktop;
+using static WindowsCluster.App.Interop.NativeMethods;
 
 namespace WindowsCluster.App.Clusters;
 
@@ -24,9 +27,35 @@ public partial class ClusterWindow : Window
 
         LocationChanged += (_, _) => SyncBounds();
         SizeChanged += (_, _) => SyncBounds();
+
+        viewModel.Items.CollectionChanged += OnItemsChanged;
+        Closed += (_, _) => viewModel.Items.CollectionChanged -= OnItemsChanged;
+        UpdateEmptyHint();
     }
 
     public ClusterViewModel ViewModel { get; }
+
+    /// <summary>Moves and sizes the window in physical screen pixels (before or after Show).</summary>
+    public void PlaceAtPixels(RECT bounds)
+    {
+        var hwnd = new WindowInteropHelper(this).EnsureHandle();
+        SetWindowPos(hwnd, IntPtr.Zero, bounds.Left, bounds.Top, bounds.Width, bounds.Height,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateEmptyHint();
+
+    private void UpdateEmptyHint() =>
+        EmptyHint.Visibility = ViewModel.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    private void Item_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2 && (sender as FrameworkElement)?.DataContext is ClusterItemViewModel item)
+        {
+            item.Open();
+            e.Handled = true;
+        }
+    }
 
     private void SyncBounds()
     {
