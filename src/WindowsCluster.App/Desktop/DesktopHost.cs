@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using WindowsCluster.App.Layout;
 using static WindowsCluster.App.Interop.NativeMethods;
 
 namespace WindowsCluster.App.Desktop;
@@ -36,6 +37,11 @@ public sealed class DesktopHost : IDisposable
 
         Topology = Discover();
     }
+
+    /// <summary>
+    /// Snapping, push-away collisions and margins for every Cluster attached to the desktop layer.
+    /// </summary>
+    public ClusterLayoutManager Layout { get; } = new();
 
     /// <summary>Latest known desktop window hierarchy.</summary>
     public DesktopTopology Topology { get; private set; }
@@ -80,6 +86,7 @@ public sealed class DesktopHost : IDisposable
         {
             case EmbedMode.DesktopLayer:
                 AttachToDesktopLayer(attachment);
+                Layout.Register(window);
                 break;
             case EmbedMode.WallpaperLayer:
                 if (!Topology.HasWallpaperLayer)
@@ -100,6 +107,7 @@ public sealed class DesktopHost : IDisposable
             return;
 
         window.Closed -= OnAttachedWindowClosed;
+        Layout.Unregister(window);
         attachment.Source?.RemoveHook(attachment.Hook!);
         if (!IsWindow(hwnd))
             return;
@@ -119,6 +127,7 @@ public sealed class DesktopHost : IDisposable
     public void Dispose()
     {
         _restartTimer?.Stop();
+        Layout.Dispose();
         foreach (var attachment in _attachments.Values.ToList())
             Detach(attachment.Window);
         _shellWatcher.RemoveHook(ShellWatcherProc);

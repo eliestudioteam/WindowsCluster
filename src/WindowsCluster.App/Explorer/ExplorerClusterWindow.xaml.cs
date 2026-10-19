@@ -49,6 +49,13 @@ public partial class ExplorerClusterWindow : Window
 
     public string FolderPath { get; }
 
+    /// <summary>Moves and sizes the window in physical screen pixels (before or after Show).</summary>
+    public void PlaceAtPixels(WindowsCluster.App.Layout.PixelRect bounds)
+    {
+        var hwnd = new WindowInteropHelper(this).EnsureHandle();
+        SetWindowPos(hwnd, IntPtr.Zero, bounds.Left, bounds.Top, bounds.Width, bounds.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
     /// <summary>Window handle of the icon list, for diagnostics and tests.</summary>
     public IntPtr ListViewHandle => _browser.ListViewHandle;
 

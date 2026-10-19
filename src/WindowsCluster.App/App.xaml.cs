@@ -4,6 +4,7 @@ using WindowsCluster.App.Clusters;
 using WindowsCluster.App.Desktop;
 using WindowsCluster.App.Explorer;
 using WindowsCluster.App.Input;
+using WindowsCluster.App.Layout;
 using WindowsCluster.App.Manager;
 using WindowsCluster.App.Shell;
 using WindowsCluster.App.Theming;
@@ -25,6 +26,7 @@ public partial class App : Application
     private MouseHook? _mouseHook;
     private DesktopDragGesture? _dragGesture;
     private DesktopMenuController? _desktopMenu;
+    private DesktopIconAvoider? _iconAvoider;
     private MainWindow? _manager;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -62,6 +64,17 @@ public partial class App : Application
         _clusters = new ClusterService(_host, _mouseHook, new ClusterStore());
         _clusters.LoadSaved();
 
+        // Icons trapped under a Cluster are moved aside only after startup, so launching the app
+        // never rearranges the desktop by itself.
+        _iconAvoider = new DesktopIconAvoider(_host.Layout, desktopIcons);
+        var activate = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        activate.Tick += (_, _) =>
+        {
+            activate.Stop();
+            _iconAvoider.Active = true;
+        };
+        activate.Start();
+
         _dragGesture = new DesktopDragGesture(_mouseHook, desktopIcons, Dispatcher);
         _desktopMenu = new DesktopMenuController(_dragGesture, _mouseHook, _clusters);
         _mouseHook.Install();
@@ -71,16 +84,22 @@ public partial class App : Application
         _theme.Track(_manager);
         _manager.Show();
 
-        // Test entry point: open the Explorer-view prototype straight away.
-        if (e.Args.Contains("--prototype"))
-            NewExplorerPrototype();
+        // Test entry points: "--prototype" opens an Explorer-view prototype at the default spot,
+        // "--prototype=x,y,width,height" at an exact rectangle in physical pixels (repeatable).
+        foreach (var arg in e.Args.Where(a => a.StartsWith("--prototype", StringComparison.Ordinal)))
+        {
+            var parts = arg.Contains('=') ? arg[(arg.IndexOf('=') + 1)..].Split(',') : [];
+            NewExplorerPrototype(parts.Length == 4 && parts.All(p => int.TryParse(p, out _))
+                ? PixelRect.FromSize(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3]))
+                : null);
+        }
     }
 
     /// <summary>
     /// Prototype: a Cluster whose body is Windows' own folder view (IExplorerBrowser) for a real
     /// folder under %APPDATA%. Dropping files on it is a normal Explorer move.
     /// </summary>
-    public ExplorerClusterWindow? NewExplorerPrototype()
+    public ExplorerClusterWindow? NewExplorerPrototype(PixelRect? pixelBounds = null)
     {
         if (_host is null)
             return null;
@@ -94,8 +113,13 @@ public partial class App : Application
 
         var window = new ExplorerClusterWindow(folder, $"Cluster {n} (Explorador)");
         _host.Attach(window, EmbedMode.DesktopLayer);
-        window.Left = 200 + 30 * (n % 6);
-        window.Top = 150 + 30 * (n % 6);
+        if (pixelBounds is { } bounds)
+            window.PlaceAtPixels(bounds);
+        else
+        {
+            window.Left = 200 + 30 * (n % 6);
+            window.Top = 150 + 30 * (n % 6);
+        }
         window.Show();
         _prototypes.Add(window);
         return window;
@@ -129,6 +153,7 @@ public partial class App : Application
         // Remove the hook first so no input is held back while the rest shuts down.
         _mouseHook?.Dispose();
         DesktopViewState.Current.Stop();
+        _iconAvoider?.Dispose();
         _desktopMenu?.Dispose();
         _dragGesture?.Dispose();
         _clusters?.Dispose();

@@ -10,7 +10,7 @@ namespace WindowsCluster.App.Desktop;
 /// <param name="ParsingName">Absolute parsing name: a file path or a "::{CLSID}" shell location.</param>
 /// <param name="DisplayName">Name shown under the icon.</param>
 /// <param name="ScreenBounds">Item cell in physical screen pixels.</param>
-public sealed record DesktopIcon(int Index, string ParsingName, string DisplayName, RECT ScreenBounds)
+public sealed record DesktopIcon(int Index, string ParsingName, string DisplayName, RECT ScreenBounds, POINT ClientPosition)
 {
     public bool Contains(POINT p) =>
         p.X >= ScreenBounds.Left && p.X < ScreenBounds.Right &&
@@ -90,6 +90,83 @@ public sealed class DesktopIconService
         return null;
     }
 
+    /// <summary>
+    /// Moves desktop icons that are covered by one of <paramref name="blocked"/> (screen pixels) to the
+    /// nearest free cell of the icon grid.
+    /// Does nothing under "Auto arrange icons", where Explorer owns every position.
+    /// </summary>
+    /// <returns>How many icons were moved.</returns>
+    public int RelocateTrapped(IReadOnlyList<Layout.PixelRect> blocked)
+    {
+        var view = GetView();
+        if (view is null || blocked.Count == 0)
+            return 0;
+        try
+        {
+            if (view.GetAutoArrange() == 0) // S_OK: auto-arrange is on
+                return 0;
+
+            var icons = ReadIcons(view);
+            if (icons.Count == 0)
+                return 0;
+            view.GetSpacing(out var spacing);
+            if (spacing.X <= 0 || spacing.Y <= 0)
+                return 0;
+
+            var listView = _host.Topology.IconListView;
+            var listOrigin = new POINT(0, 0);
+            ClientToScreen(listView, ref listOrigin);
+            var first = icons[0].ClientPosition;
+            var origin = new Layout.PixelPoint(
+                listOrigin.X + (((first.X % spacing.X) + spacing.X) % spacing.X),
+                listOrigin.Y + (((first.Y % spacing.Y) + spacing.Y) % spacing.Y));
+
+            var moved = 0;
+            // Icons live on one monitor's work area each; group them so the grid search stays on that monitor.
+            foreach (var group in icons.GroupBy(i => MonitorFromPoint(new POINT(i.ScreenBounds.Left, i.ScreenBounds.Top), MONITOR_DEFAULTTONEAREST)))
+            {
+                var any = group.First();
+                var work = GetWorkAreaAt(new POINT(any.ScreenBounds.Left, any.ScreenBounds.Top));
+                var area = new Layout.PixelRect(work.Left, work.Top, work.Right, work.Bottom);
+                var input = group.Select(i => new Layout.IconGrid.Icon(
+                    i.Index,
+                    new Layout.PixelPoint(listOrigin.X + i.ClientPosition.X, listOrigin.Y + i.ClientPosition.Y),
+                    new Layout.PixelRect(i.ScreenBounds.Left, i.ScreenBounds.Top, i.ScreenBounds.Right, i.ScreenBounds.Bottom))).ToList();
+
+                var moves = Layout.IconGrid.Relocate(input, new Layout.PixelPoint(spacing.X, spacing.Y), origin, area, blocked);
+                if (moves.Count == 0)
+                    continue;
+
+                foreach (var (index, cell) in moves)
+                {
+                    if (SetItemPosition(listView, index, cell.X - listOrigin.X, cell.Y - listOrigin.Y))
+                        moved++;
+                }
+            }
+            return moved;
+        }
+        catch (COMException ex)
+        {
+            Debug.WriteLine($"[DesktopIconService] RelocateTrapped: {ex.Message}");
+            _view = null;
+            return 0;
+        }
+    }
+
+    private const uint LVM_SETITEMPOSITION = 0x100F;
+    private const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    /// <summary>
+    /// Moves one desktop icon with the list-view message LVM_SETITEMPOSITION (client pixels). The
+    /// documented IFolderView.SelectAndPositionItems reports success but does nothing on the desktop
+    /// of Windows 11 build 26300, which is why the list view's own message is used. The send has a
+    /// timeout so an unresponsive Explorer can never hang this app.
+    /// </summary>
+    private static bool SetItemPosition(IntPtr listView, int index, int x, int y) =>
+        listView != IntPtr.Zero &&
+        SendMessageTimeout(listView, LVM_SETITEMPOSITION, (IntPtr)index, (IntPtr)((y << 16) | (x & 0xFFFF)),
+            SMTO_ABORTIFHUNG, 1000, out _) != IntPtr.Zero;
+
     /// <summary>Selects exactly <paramref name="icons"/> in Explorer, as its own rubber band would.</summary>
     public void Select(IReadOnlyList<DesktopIcon> icons)
     {
@@ -135,6 +212,7 @@ public sealed class DesktopIconService
                 try
                 {
                     view.GetItemPosition(childPidl, out var pos);
+                    var clientPosition = pos;
                     ClientToScreen(listView, ref pos);
 
                     var absolute = ILCombine(folderPidl, childPidl);
@@ -148,7 +226,7 @@ public sealed class DesktopIconService
                         // cell from IFolderView is wider and caught neighbouring icons.
                         var bounds = MatchDrawnBounds(drawn, i, display!)
                             ?? new RECT { Left = pos.X, Top = pos.Y, Right = pos.X + spacing.X, Bottom = pos.Y + spacing.Y };
-                        icons.Add(new DesktopIcon(i, parsing, display!, bounds));
+                        icons.Add(new DesktopIcon(i, parsing, display!, bounds, clientPosition));
                     }
                     finally
                     {
