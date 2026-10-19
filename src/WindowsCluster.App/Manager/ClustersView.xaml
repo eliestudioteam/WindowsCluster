@@ -29,6 +29,8 @@
 
     <DockPanel>
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center" Click="Prototype_Click"
+                    Content="Prototipo: vista del Explorador" />
             <Button DockPanel.Dock="Right" Style="{StaticResource Style.AccentButton}" VerticalAlignment="Center"
                     Click="NewCluster_Click">
                 <StackPanel Orientation="Horizontal">

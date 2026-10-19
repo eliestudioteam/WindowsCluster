@@ -1,0 +1,49 @@
+<Window x:Class="WindowsCluster.App.Explorer.ExplorerClusterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding Title, RelativeSource={RelativeSource Self}}"
+        WindowStyle="None"
+        AllowsTransparency="False"
+        Background="{DynamicResource Brush.ClusterBackground}"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="CanResize"
+        MinWidth="220" MinHeight="140"
+        Width="420" Height="300"
+        FontFamily="{StaticResource Font.Text}">
+    <!-- Prototype: a Cluster whose body is Windows' own folder view (IExplorerBrowser).
+         The window is NOT layered (AllowsTransparency): child windows do not render inside WPF
+         layered windows, so the rounded corners come from DWM (see OnSourceInitialized). The folder
+         view paints its own opaque background, so the body cannot be translucent. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="30" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="Header"
+                Background="{DynamicResource Brush.ClusterHeader}"
+                MouseLeftButtonDown="Header_MouseLeftButtonDown"
+                MouseMove="Header_MouseMove"
+                MouseLeftButtonUp="Header_MouseLeftButtonUp"
+                LostMouseCapture="Header_LostMouseCapture">
+            <TextBlock x:Name="TitleText"
+                       Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
+                       Foreground="{DynamicResource Brush.ClusterText}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <ContentPresenter x:Name="BrowserSlot" Grid.Row="1" Margin="4,2,4,6" />
+    </Grid>
+</Window>

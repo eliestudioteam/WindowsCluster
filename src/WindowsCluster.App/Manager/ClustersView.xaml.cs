@@ -11,6 +11,9 @@ public partial class ClustersView : UserControl
 
     private void NewCluster_Click(object sender, RoutedEventArgs e) => Model?.NewCluster();
 
+    private void Prototype_Click(object sender, RoutedEventArgs e) =>
+        ((App)Application.Current).NewExplorerPrototype();
+
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         if (Model?.Selected is { } cluster)

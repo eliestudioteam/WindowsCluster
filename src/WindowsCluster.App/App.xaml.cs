@@ -1,7 +1,8 @@
-﻿using System.Threading;
+using System.Threading;
 using System.Windows;
 using WindowsCluster.App.Clusters;
 using WindowsCluster.App.Desktop;
+using WindowsCluster.App.Explorer;
 using WindowsCluster.App.Input;
 using WindowsCluster.App.Manager;
 using WindowsCluster.App.Shell;
@@ -69,7 +70,38 @@ public partial class App : Application
         MainWindow = _manager;
         _theme.Track(_manager);
         _manager.Show();
+
+        // Test entry point: open the Explorer-view prototype straight away.
+        if (e.Args.Contains("--prototype"))
+            NewExplorerPrototype();
     }
+
+    /// <summary>
+    /// Prototype: a Cluster whose body is Windows' own folder view (IExplorerBrowser) for a real
+    /// folder under %APPDATA%. Dropping files on it is a normal Explorer move.
+    /// </summary>
+    public ExplorerClusterWindow? NewExplorerPrototype()
+    {
+        if (_host is null)
+            return null;
+        var root = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WindowsCluster", "Prototype");
+        var n = 1;
+        while (System.IO.Directory.Exists(System.IO.Path.Combine(root, $"Cluster {n}")))
+            n++;
+        var folder = System.IO.Path.Combine(root, $"Cluster {n}");
+        System.IO.Directory.CreateDirectory(folder);
+
+        var window = new ExplorerClusterWindow(folder, $"Cluster {n} (Explorador)");
+        _host.Attach(window, EmbedMode.DesktopLayer);
+        window.Left = 200 + 30 * (n % 6);
+        window.Top = 150 + 30 * (n % 6);
+        window.Show();
+        _prototypes.Add(window);
+        return window;
+    }
+
+    private readonly List<ExplorerClusterWindow> _prototypes = new();
 
     /// <summary>Brings the Manager to front, optionally on a Cluster's settings.</summary>
     public void ShowManager(ClusterViewModel? cluster = null)
