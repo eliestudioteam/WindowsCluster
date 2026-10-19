@@ -81,11 +81,6 @@ public sealed class FolderPortal : IDisposable
 
         _items.Clear();
         foreach (var entry in entries)
-        {
-            var name = entry is FileInfo { Extension: ".lnk" or ".url" }
-                ? Path.GetFileNameWithoutExtension(entry.Name)
-                : entry.Name;
-            _items.Add(new ClusterItemViewModel(entry.FullName, name));
-        }
+            _items.Add(new ClusterItemViewModel(entry.FullName));
     }
 }

@@ -165,6 +165,33 @@ internal static class ShellItems
         return bytes;
     }
 
+    [DllImport("shell32.dll")]
+    private static extern int SHGetNameFromIDList(IntPtr pidl, uint sigdnName, out IntPtr ppszName);
+
+    private const uint SIGDN_NORMALDISPLAY = 0x00000000;
+
+    /// <summary>
+    /// The name Explorer shows under the icon: no ".lnk", and no extension when the user
+    /// hides known extensions. Null if the item cannot be resolved.
+    /// </summary>
+    public static string? GetDisplayName(string parsingName)
+    {
+        var pidl = ParsePidl(parsingName);
+        if (pidl == IntPtr.Zero)
+            return null;
+        try
+        {
+            if (SHGetNameFromIDList(pidl, SIGDN_NORMALDISPLAY, out var name) != 0)
+                return null;
+            try { return Marshal.PtrToStringUni(name); }
+            finally { Marshal.FreeCoTaskMem(name); }
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(pidl);
+        }
+    }
+
     /// <summary>Runs the default verb exactly as a double-click on the desktop would.</summary>
     public static void Open(string parsingName, IntPtr owner)
     {

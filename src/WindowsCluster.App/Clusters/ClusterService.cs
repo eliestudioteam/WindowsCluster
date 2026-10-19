@@ -40,6 +40,7 @@ public sealed class ClusterService : IDisposable
 
         WatchDesktopFolders();
         DesktopViewState.Current.PropertyChanged += OnDesktopViewChanged;
+        _mouseHook.MouseEvent += OnGlobalMouse;
     }
 
     public ObservableCollection<ClusterViewModel> Clusters { get; } = new();
@@ -62,8 +63,10 @@ public sealed class ClusterService : IDisposable
             };
             foreach (var item in stored.Items)
             {
-                // A file deleted while the app was closed simply drops out of its Cluster.
-                if (Exists(item.ParsingName))
+                // A file deleted while the app was closed simply drops out of its Cluster, and a
+                // desktop item that was never hidden stays only on the desktop (no duplicate).
+                if (Exists(item.ParsingName) &&
+                    !(DesktopItemVisibility.IsDesktopItem(item.ParsingName) && item.Hidden.Method == HideMethod.None))
                     vm.Items.Add(new ClusterItemViewModel(item.ParsingName, item.DisplayName) { Hidden = item.Hidden });
             }
             if (stored.FolderPath is not null && Directory.Exists(stored.FolderPath))
@@ -116,7 +119,7 @@ public sealed class ClusterService : IDisposable
                 pixelBounds.Width / scale, pixelBounds.Height / scale),
         };
         if (icons is not null)
-            Adopt(vm, icons.Select(i => (i.ParsingName, i.DisplayName)));
+            Adopt(vm, icons.Select(i => i.ParsingName));
         if (folderPath is not null)
         {
             // The portal stands in for the folder, so its own desktop icon is hidden too.
@@ -131,18 +134,74 @@ public sealed class ClusterService : IDisposable
 
     /// <summary>
     /// Moves real desktop items into <paramref name="vm"/>: they are hidden from Explorer's grid
-    /// (never copied), and skipped when another Cluster already holds them.
+    /// (never copied). Items already in another Cluster move over from it. A desktop item that
+    /// cannot be hidden (e.g. the UAC prompt for a Public Desktop shortcut was declined) stays
+    /// on the desktop instead of appearing twice.
     /// </summary>
-    public void Adopt(ClusterViewModel vm, IEnumerable<(string ParsingName, string DisplayName)> items)
+    public void Adopt(ClusterViewModel vm, IEnumerable<string> parsingNames)
     {
-        foreach (var (parsingName, displayName) in items)
+        var incoming = new List<string>();
+        foreach (var name in parsingNames.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (FindOwner(parsingName) is not null)
+            if (FindOwner(name) is { } owner)
+            {
+                if (owner != vm)
+                    MoveItem(owner, vm, name);
                 continue;
-            var hidden = DesktopItemVisibility.IsDesktopItem(parsingName)
-                ? DesktopItemVisibility.Hide(parsingName)
-                : HiddenState.NotHidden;
-            vm.Items.Add(new ClusterItemViewModel(parsingName, displayName) { Hidden = hidden });
+            }
+            incoming.Add(name);
+        }
+
+        var states = DesktopItemVisibility.HideMany(incoming.Where(DesktopItemVisibility.IsDesktopItem));
+        foreach (var name in incoming)
+        {
+            var hidden = states.TryGetValue(name, out var state) ? state : HiddenState.NotHidden;
+            if (DesktopItemVisibility.IsDesktopItem(name) && hidden.Method == HideMethod.None)
+                continue;
+            vm.Items.Add(new ClusterItemViewModel(name) { Hidden = hidden });
+        }
+        SaveNow();
+    }
+
+    private void MoveItem(ClusterViewModel from, ClusterViewModel to, string parsingName)
+    {
+        var item = from.Items.First(i => string.Equals(i.ParsingName, parsingName, StringComparison.OrdinalIgnoreCase));
+        from.Items.Remove(item);
+        if (item.Hidden.Method == HideMethod.None && DesktopItemVisibility.IsDesktopItem(parsingName))
+            item.Hidden = DesktopItemVisibility.Hide(parsingName);
+        item.IsSelected = false;
+        to.Items.Add(item);
+    }
+
+    /// <summary>
+    /// Called before items are dragged out of a Cluster: they become normal desktop files
+    /// again, so wherever they land (another folder, the desktop) they are not left hidden.
+    /// </summary>
+    public void BeginDragOut(IReadOnlyList<ClusterItemViewModel> items)
+    {
+        DesktopItemVisibility.RestoreMany(items.Select(i => (i.ParsingName, i.Hidden)));
+        foreach (var item in items)
+            item.Hidden = HiddenState.NotHidden;
+    }
+
+    /// <summary>
+    /// Called after the drag ends. Items dropped back on their Cluster (or a cancelled drag)
+    /// are hidden again; items dropped on the desktop leave the Cluster. Items moved to
+    /// another folder or Cluster were already handled by the drop.
+    /// </summary>
+    public void EndDragOut(ClusterViewModel vm, IReadOnlyList<ClusterItemViewModel> items, bool droppedOnOwnCluster)
+    {
+        var stillHere = items.Where(i => vm.Items.Contains(i) && Exists(i.ParsingName)).ToList();
+        if (droppedOnOwnCluster)
+        {
+            var states = DesktopItemVisibility.HideMany(stillHere.Select(i => i.ParsingName));
+            foreach (var item in stillHere)
+                item.Hidden = states.TryGetValue(item.ParsingName, out var state) ? state : HiddenState.NotHidden;
+        }
+        else
+        {
+            foreach (var item in stillHere)
+                vm.Items.Remove(item);
         }
         SaveNow();
     }
@@ -164,7 +223,7 @@ public sealed class ClusterService : IDisposable
         var onDesktop = paths.Where(DesktopItemVisibility.IsDesktopItem).ToList();
         var elsewhere = paths.Except(onDesktop).ToList();
         var arrived = ShellFileOperations.Transfer(elsewhere, DesktopItemVisibility.DesktopFolders[0], copy, owner);
-        Adopt(vm, onDesktop.Concat(arrived).Select(p => (p, DisplayNameOf(p))));
+        Adopt(vm, onDesktop.Concat(arrived));
     }
 
     /// <summary>
@@ -185,7 +244,7 @@ public sealed class ClusterService : IDisposable
     {
         if (vm.Portal is not null)
             return; // portal items are the folder's content, not desktop items
-        DesktopItemVisibility.Restore(item.ParsingName, item.Hidden);
+        DesktopItemVisibility.RestoreMany([(item.ParsingName, item.Hidden)]);
         vm.Items.Remove(item);
     }
 
@@ -203,6 +262,7 @@ public sealed class ClusterService : IDisposable
     {
         _host.ShellRestarted -= OnShellRestarted;
         DesktopViewState.Current.PropertyChanged -= OnDesktopViewChanged;
+        _mouseHook.MouseEvent -= OnGlobalMouse;
         foreach (var watcher in _desktopWatchers)
             watcher.Dispose();
         SaveNow();
@@ -228,12 +288,9 @@ public sealed class ClusterService : IDisposable
     private void ReleaseAll(ClusterViewModel vm)
     {
         if (vm.Portal is { } portal)
-            DesktopItemVisibility.Restore(portal.FolderPath, vm.PortalFolderHidden);
+            DesktopItemVisibility.RestoreMany([(portal.FolderPath, vm.PortalFolderHidden)]);
         else
-        {
-            foreach (var item in vm.Items.ToList())
-                DesktopItemVisibility.Restore(item.ParsingName, item.Hidden);
-        }
+            DesktopItemVisibility.RestoreMany(vm.Items.Select(i => (i.ParsingName, i.Hidden)).ToList());
         vm.PropertyChanged -= OnClusterChanged;
         vm.Items.CollectionChanged -= OnItemsChanged;
     }
@@ -271,6 +328,77 @@ public sealed class ClusterService : IDisposable
                 stale.Close();
             ShowWindow(vm);
         }
+    }
+
+    // ---------------------------------------------------------------- selection across the desktop
+
+    private POINT? _desktopBandStart;
+    private bool _desktopBandUpdateQueued;
+    private POINT _desktopBandEnd;
+
+    /// <summary>
+    /// Makes Cluster selection behave like part of the desktop: a click anywhere else clears it,
+    /// and a rubber band started on the desktop also selects the Cluster icons it covers.
+    /// Runs inside the low-level hook, so it only records state and defers the work.
+    /// </summary>
+    private void OnGlobalMouse(object? sender, LowLevelMouseEventArgs e)
+    {
+        switch (e.Message)
+        {
+            case NativeMethodsMessages.LButtonDown:
+                var point = e.Point;
+                var additive = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
+                _dispatcher.BeginInvoke(() =>
+                {
+                    if (!additive)
+                    {
+                        foreach (var window in _windows.Values)
+                        {
+                            GetWindowRect(new System.Windows.Interop.WindowInteropHelper(window).Handle, out var r);
+                            var inside = point.X >= r.Left && point.X < r.Right && point.Y >= r.Top && point.Y < r.Bottom;
+                            if (!inside)
+                                window.ClearSelection();
+                        }
+                    }
+                });
+                if (DesktopDragGesture.IsDesktopIconList(point) && !DesktopIconService.IsOverIcon(point))
+                    _desktopBandStart = point;
+                break;
+
+            case NativeMethodsMessages.MouseMove when _desktopBandStart is not null:
+                _desktopBandEnd = e.Point;
+                if (_desktopBandUpdateQueued)
+                    break;
+                _desktopBandUpdateQueued = true;
+                _dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, () =>
+                {
+                    _desktopBandUpdateQueued = false;
+                    if (_desktopBandStart is not { } start)
+                        return;
+                    var band = new RECT
+                    {
+                        Left = Math.Min(start.X, _desktopBandEnd.X),
+                        Top = Math.Min(start.Y, _desktopBandEnd.Y),
+                        Right = Math.Max(start.X, _desktopBandEnd.X),
+                        Bottom = Math.Max(start.Y, _desktopBandEnd.Y),
+                    };
+                    var add = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
+                    foreach (var window in _windows.Values)
+                        window.SelectInScreenRect(band, add);
+                });
+                break;
+
+            case NativeMethodsMessages.LButtonUp:
+                _desktopBandStart = null;
+                break;
+        }
+    }
+
+    private static class NativeMethodsMessages
+    {
+        public const int MouseMove = 0x0200;
+        public const int LButtonDown = 0x0201;
+        public const int LButtonUp = 0x0202;
     }
 
     private void OnClusterChanged(object? sender, PropertyChangedEventArgs e) => ScheduleSave();
@@ -377,13 +505,10 @@ public sealed class ClusterService : IDisposable
         var index = vm.Items.ToList().FindIndex(i => string.Equals(i.ParsingName, oldPath, StringComparison.OrdinalIgnoreCase));
         var old = vm.Items[index];
         // Renaming keeps the file's attributes, so it stays hidden; only the reference changes.
-        vm.Items[index] = new ClusterItemViewModel(newPath, DisplayNameOf(newPath)) { Hidden = old.Hidden };
+        vm.Items[index] = new ClusterItemViewModel(newPath) { Hidden = old.Hidden };
     }
 
     private string NextTitle() => $"Cluster {Clusters.Count + 1}";
-
-    private static string DisplayNameOf(string path) =>
-        Path.GetExtension(path) is ".lnk" or ".url" ? Path.GetFileNameWithoutExtension(path) : Path.GetFileName(path);
 
     private static bool Exists(string parsingName) =>
         parsingName.StartsWith("::", StringComparison.Ordinal) || File.Exists(parsingName) || Directory.Exists(parsingName);

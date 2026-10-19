@@ -211,6 +211,214 @@ public static class ShellContextMenu
             Marshal.FreeHGlobal(buffer);
         }
     }
+
+    // ---------------------------------------------------------------- menu model for the Windows 11 layout
+
+    /// <summary>One command (or submenu) read from the shell's context menu.</summary>
+    public sealed class Entry
+    {
+        public string Text { get; init; } = "";
+        public string? Shortcut { get; init; }
+        public System.Windows.Media.ImageSource? Icon { get; init; }
+        public int CommandId { get; init; } = -1;
+        public string? Verb { get; init; }
+        public bool IsSeparator { get; init; }
+        public bool IsEnabled { get; init; } = true;
+        public List<Entry> Children { get; } = new();
+    }
+
+    /// <summary>
+    /// A live shell context menu whose commands are read into <see cref="Entries"/> so they can
+    /// be shown in a WPF menu. Every entry still runs the shell's own command when invoked.
+    /// </summary>
+    public sealed class Session : IDisposable
+    {
+        private const uint MIIM_STATE = 0x01, MIIM_ID = 0x02, MIIM_SUBMENU = 0x04, MIIM_STRING = 0x40,
+            MIIM_BITMAP = 0x80, MIIM_FTYPE = 0x100;
+        private const uint MFT_SEPARATOR = 0x800, MFT_OWNERDRAW = 0x100, MFS_DISABLED = 0x3;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct MENUITEMINFO
+        {
+            public int cbSize;
+            public uint fMask, fType, fState, wID;
+            public IntPtr hSubMenu, hbmpChecked, hbmpUnchecked, dwItemData, dwTypeData;
+            public uint cch;
+            public IntPtr hbmpItem;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool GetMenuItemInfo(IntPtr hmenu, uint item, bool fByPosition, ref MENUITEMINFO lpmii);
+
+        [DllImport("user32.dll")]
+        private static extern int GetMenuItemCount(IntPtr hMenu);
+
+        private readonly object _menuObject;
+        private readonly IContextMenu _menu;
+        private readonly IntPtr _hmenu;
+        private readonly IntPtr _owner;
+
+        private Session(object menuObject, IntPtr hmenu, IntPtr owner)
+        {
+            _menuObject = menuObject;
+            _menu = (IContextMenu)menuObject;
+            _hmenu = hmenu;
+            _owner = owner;
+            Entries = Read(hmenu);
+        }
+
+        public IReadOnlyList<Entry> Entries { get; }
+
+        /// <summary>Builds the menu for <paramref name="parsingNames"/>, or null if the shell offers none.</summary>
+        public static Session? Create(IntPtr owner, IReadOnlyList<string> parsingNames)
+        {
+            object? menuObject = null;
+            var hmenu = IntPtr.Zero;
+            try
+            {
+                menuObject = ShellItems.BindToHandler(parsingNames, typeof(IContextMenu).GUID, owner);
+                if (menuObject is not IContextMenu menu)
+                    return null;
+                hmenu = CreatePopupMenu();
+                var flags = CMF_NORMAL | CMF_CANRENAME;
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                    flags |= CMF_EXTENDEDVERBS;
+                if (menu.QueryContextMenu(hmenu, 0, FirstCommand, LastCommand, flags) < 0)
+                    return null;
+                var session = new Session(menuObject, hmenu, owner);
+                menuObject = null;
+                hmenu = IntPtr.Zero;
+                return session;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ShellContextMenu.Session] {ex}");
+                return null;
+            }
+            finally
+            {
+                if (hmenu != IntPtr.Zero)
+                    DestroyMenu(hmenu);
+                if (menuObject is not null)
+                    Marshal.ReleaseComObject(menuObject);
+            }
+        }
+
+        /// <summary>Runs the shell command behind <paramref name="entry"/>.</summary>
+        public void Invoke(Entry entry, POINT point)
+        {
+            if (entry.CommandId < FirstCommand)
+                return;
+            try
+            {
+                ShellContextMenu.Invoke(_menu, _owner, (IntPtr)(entry.CommandId - FirstCommand), point);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ShellContextMenu.Session] Invoke: {ex.Message}");
+            }
+        }
+
+        public void Dispose()
+        {
+            DestroyMenu(_hmenu);
+            Marshal.ReleaseComObject(_menuObject);
+        }
+
+        private List<Entry> Read(IntPtr hmenu)
+        {
+            var entries = new List<Entry>();
+            var count = GetMenuItemCount(hmenu);
+            for (var i = 0; i < count; i++)
+            {
+                var info = new MENUITEMINFO
+                {
+                    cbSize = Marshal.SizeOf<MENUITEMINFO>(),
+                    fMask = MIIM_FTYPE | MIIM_STATE | MIIM_ID | MIIM_SUBMENU | MIIM_STRING | MIIM_BITMAP,
+                };
+                if (!GetMenuItemInfo(hmenu, (uint)i, true, ref info))
+                    continue;
+                if ((info.fType & MFT_SEPARATOR) != 0)
+                {
+                    if (entries.Count > 0 && !entries[^1].IsSeparator)
+                        entries.Add(new Entry { IsSeparator = true });
+                    continue;
+                }
+                if ((info.fType & MFT_OWNERDRAW) != 0)
+                    continue; // drawn by the extension itself; still available in "Show more options"
+
+                var text = ReadText(hmenu, i, info.cch);
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+                var tab = text.IndexOf('\t');
+                var label = (tab >= 0 ? text[..tab] : text).Replace("&&", "\u0001").Replace("&", "").Replace("\u0001", "&");
+                var shortcut = tab >= 0 ? text[(tab + 1)..] : null;
+
+                var entry = new Entry
+                {
+                    Text = label,
+                    Shortcut = shortcut,
+                    Icon = ReadIcon(info.hbmpItem),
+                    CommandId = info.hSubMenu == IntPtr.Zero ? (int)info.wID : -1,
+                    Verb = info.hSubMenu == IntPtr.Zero && info.wID >= FirstCommand ? GetVerb(_menu, (int)info.wID - FirstCommand) : null,
+                    IsEnabled = (info.fState & MFS_DISABLED) == 0,
+                };
+                if (info.hSubMenu != IntPtr.Zero)
+                {
+                    // Submenus such as "Send to" are filled on demand by the extension.
+                    if (_menuObject is IContextMenu3 cm3)
+                        cm3.HandleMenuMsg2(WM_INITMENUPOPUP, info.hSubMenu, (IntPtr)i, out _);
+                    else if (_menuObject is IContextMenu2 cm2)
+                        cm2.HandleMenuMsg(WM_INITMENUPOPUP, info.hSubMenu, (IntPtr)i);
+                    entry.Children.AddRange(Read(info.hSubMenu));
+                    if (entry.Children.Count == 0)
+                        continue;
+                }
+                entries.Add(entry);
+            }
+            if (entries.Count > 0 && entries[^1].IsSeparator)
+                entries.RemoveAt(entries.Count - 1);
+            return entries;
+        }
+
+        private static string ReadText(IntPtr hmenu, int index, uint length)
+        {
+            if (length == 0)
+                return "";
+            var buffer = Marshal.AllocHGlobal((int)(length + 1) * 2);
+            try
+            {
+                var info = new MENUITEMINFO
+                {
+                    cbSize = Marshal.SizeOf<MENUITEMINFO>(),
+                    fMask = MIIM_STRING,
+                    dwTypeData = buffer,
+                    cch = length + 1,
+                };
+                return GetMenuItemInfo(hmenu, (uint)index, true, ref info) ? Marshal.PtrToStringUni(buffer) ?? "" : "";
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        private static System.Windows.Media.ImageSource? ReadIcon(IntPtr hbmp)
+        {
+            // HBMMENU_CALLBACK (-1) and the predefined HBMMENU_* values (1..11) are not real bitmaps.
+            var value = hbmp.ToInt64();
+            if (value is >= -1 and <= 11)
+                return null;
+            try
+            {
+                return ShellIconLoader.ToBitmapSource(hbmp);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+    }
 }
 
 /// <summary>

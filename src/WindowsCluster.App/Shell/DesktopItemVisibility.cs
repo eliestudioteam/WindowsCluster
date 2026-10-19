@@ -73,24 +73,87 @@ public static class DesktopItemVisibility
         Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
     ];
 
-    public static HiddenState Hide(string parsingName)
+    public static HiddenState Hide(string parsingName) =>
+        HideMany([parsingName]).TryGetValue(parsingName, out var state) ? state : HiddenState.NotHidden;
+
+    /// <summary>
+    /// Hides several items. Public Desktop items (shared by all users) need administrator
+    /// rights: they are hidden together through one elevated helper, so the user sees a single
+    /// UAC prompt. Items that still cannot be hidden come back as <see cref="HiddenState.NotHidden"/>.
+    /// </summary>
+    public static IReadOnlyDictionary<string, HiddenState> HideMany(IEnumerable<string> parsingNames)
     {
-        try
+        var result = new Dictionary<string, HiddenState>(StringComparer.OrdinalIgnoreCase);
+        var needsElevation = new List<string>();
+        foreach (var name in parsingNames.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            return IsShellLocation(parsingName) ? HideShellLocation(parsingName) : HideFile(parsingName);
+            try
+            {
+                result[name] = IsShellLocation(name) ? HideShellLocation(name) : HideFile(name);
+            }
+            catch (UnauthorizedAccessException) when (IsPublicDesktopItem(name))
+            {
+                HiddenLedger.Remove(name);
+                needsElevation.Add(name);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                HiddenLedger.Remove(name);
+                Debug.WriteLine($"[Visibility] Hide {name}: {ex.Message}");
+                result[name] = HiddenState.NotHidden;
+            }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+
+        if (needsElevation.Count > 0)
         {
-            Debug.WriteLine($"[Visibility] Hide {parsingName}: {ex.Message}");
-            return HiddenState.NotHidden;
+            var state = new HiddenState(HideMethod.FileAttribute, WasAlreadyHidden: false);
+            foreach (var name in needsElevation)
+                HiddenLedger.Record(name, state);
+            ElevatedAttributes.Run(hide: true, needsElevation);
+            foreach (var name in needsElevation)
+            {
+                var hidden = File.Exists(name) && (File.GetAttributes(name) & FileAttributes.Hidden) != 0;
+                result[name] = hidden ? state : HiddenState.NotHidden;
+                if (hidden)
+                    NotifyChanged(name);
+                else
+                    HiddenLedger.Remove(name);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Restores several items, elevating once for Public Desktop items.</summary>
+    public static void RestoreMany(IEnumerable<(string ParsingName, HiddenState State)> items)
+    {
+        var needsElevation = new List<string>();
+        foreach (var (name, state) in items)
+        {
+            if (state.WasAlreadyHidden || state.Method == HideMethod.None)
+                continue;
+            if (!Restore(name, state) && IsPublicDesktopItem(name))
+                needsElevation.Add(name);
+        }
+        if (needsElevation.Count == 0)
+            return;
+        ElevatedAttributes.Run(hide: false, needsElevation);
+        foreach (var name in needsElevation)
+        {
+            NotifyChanged(name);
+            if (!File.Exists(name) || (File.GetAttributes(name) & FileAttributes.Hidden) == 0)
+                HiddenLedger.Remove(name);
         }
     }
 
+    public static bool IsPublicDesktopItem(string path) =>
+        string.Equals(Path.GetDirectoryName(path), DesktopFolders[1], StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Returns the item to the desktop grid. Never deletes anything.</summary>
-    public static void Restore(string parsingName, HiddenState state)
+    /// <returns>False when the item could not be restored (e.g. missing rights).</returns>
+    public static bool Restore(string parsingName, HiddenState state)
     {
         if (state.WasAlreadyHidden || state.Method == HideMethod.None)
-            return;
+            return true;
         try
         {
             switch (state.Method)
@@ -108,10 +171,12 @@ public static class DesktopItemVisibility
                     break;
             }
             HiddenLedger.Remove(parsingName);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             Debug.WriteLine($"[Visibility] Restore {parsingName}: {ex.Message}");
+            return false;
         }
     }
 
@@ -122,14 +187,10 @@ public static class DesktopItemVisibility
     public static void ReleaseOrphans(IEnumerable<string> referenced)
     {
         var inUse = new HashSet<string>(referenced, StringComparer.OrdinalIgnoreCase);
-        foreach (var (path, state) in HiddenLedger.Entries())
-        {
-            if (inUse.Contains(path))
-                continue;
-            Debug.WriteLine($"[Visibility] Releasing orphan {path}");
-            Restore(path, state);
-            HiddenLedger.Remove(path); // also clears entries whose file no longer exists
-        }
+        var orphans = HiddenLedger.Entries().Where(e => !inUse.Contains(e.Path)).ToList();
+        foreach (var (path, _) in orphans.Where(o => !File.Exists(o.Path) && !Directory.Exists(o.Path) && !IsShellLocation(o.Path)))
+            HiddenLedger.Remove(path);
+        RestoreMany(orphans.Where(o => File.Exists(o.Path) || Directory.Exists(o.Path) || IsShellLocation(o.Path)));
     }
 
     private static HiddenState HideFile(string path)

@@ -23,6 +23,10 @@ public partial class ClusterWindow : Window
     private readonly DropTargetHelper _dropHelper = new();
     private ClusterItemViewModel? _anchor;
     private Point? _bandStart;
+    private ClusterItemViewModel? _downItem;
+    private Point _downPoint;
+    private bool _wasSelectedOnDown;
+    private System.Windows.Threading.DispatcherTimer? _renameTimer;
     private bool _moving;
     private POINT _moveCursorStart;
     private RECT _moveWindowStart;
@@ -168,9 +172,15 @@ public partial class ClusterWindow : Window
 
         if (e.ClickCount == 2)
         {
+            _renameTimer?.Stop();
+            _downItem = null;
             item.Open(Hwnd);
             return;
         }
+
+        _downItem = item;
+        _downPoint = e.GetPosition(this);
+        _wasSelectedOnDown = item.IsSelected;
 
         var modifiers = Keyboard.Modifiers;
         if ((modifiers & ModifierKeys.Shift) != 0 && _anchor is not null)
@@ -188,6 +198,123 @@ public partial class ClusterWindow : Window
             _anchor = item;
         }
     }
+
+    /// <summary>
+    /// Explorer's slow click: clicking the name of an item that was already the only selected
+    /// one starts renaming, unless it turns into a double-click.
+    /// </summary>
+    private void Label_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ClusterItemViewModel item ||
+            item != _downItem || !_wasSelectedOnDown || Keyboard.Modifiers != ModifierKeys.None ||
+            Selection.Count != 1)
+            return;
+
+        if (_renameTimer is null)
+        {
+            _renameTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(GetDoubleClickTime() + 50),
+            };
+            _renameTimer.Tick += StartPendingRename;
+        }
+        _renameTimer.Stop();
+        _renameTimer.Tag = item;
+        _renameTimer.Start();
+    }
+
+    private void StartPendingRename(object? sender, EventArgs e)
+    {
+        _renameTimer!.Stop();
+        if (_renameTimer.Tag is ClusterItemViewModel { IsSelected: true } item)
+            item.IsRenaming = true;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
+
+    /// <summary>Clears the selection (a click elsewhere on the desktop or in another Cluster).</summary>
+    public void ClearSelection()
+    {
+        if (ViewModel.Items.Any(i => i.IsSelected))
+            SelectOnly(null);
+    }
+
+    /// <summary>
+    /// Selects the items under a rectangle drawn on the desktop (physical screen pixels), so a
+    /// rubber band started on the desktop also picks up the icons inside this Cluster.
+    /// </summary>
+    public void SelectInScreenRect(RECT band, bool additive)
+    {
+        var bandRect = new Rect(band.Left, band.Top, band.Width, band.Height);
+        foreach (var item in ViewModel.Items)
+        {
+            if (ItemsHost.ItemContainerGenerator.ContainerFromItem(item) is not FrameworkElement { IsVisible: true } container)
+                continue;
+            var topLeft = container.PointToScreen(new Point(0, 0));
+            var bottomRight = container.PointToScreen(new Point(container.ActualWidth, container.ActualHeight));
+            var hit = new Rect(topLeft, bottomRight).IntersectsWith(bandRect);
+            if (hit)
+                item.IsSelected = true;
+            else if (!additive)
+                item.IsSelected = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- drag out
+
+    private void Item_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_downItem is null || e.LeftButton != MouseButtonState.Pressed)
+            return;
+        var delta = e.GetPosition(this) - _downPoint;
+        if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        var item = _downItem;
+        _downItem = null;
+        _renameTimer?.Stop();
+        if (!item.IsSelected)
+            SelectOnly(item);
+        StartDragOut();
+    }
+
+    /// <summary>
+    /// Drags the selected items with the shell's own data object and drag loop, so any drop
+    /// target (desktop, Explorer folders, other apps, other Clusters) treats them as real files.
+    /// </summary>
+    private void StartDragOut()
+    {
+        var items = Selection;
+        var data = ShellItems.BindToHandler(items.Select(i => i.ParsingName).ToList(),
+            new Guid("0000010E-0000-0000-C000-000000000046"), Hwnd) as System.Runtime.InteropServices.ComTypes.IDataObject;
+        if (data is null)
+            return;
+
+        _service.BeginDragOut(items);
+        try
+        {
+            SHDoDragDrop(Hwnd, data, IntPtr.Zero, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, out _);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.ReleaseComObject(data);
+        }
+
+        GetCursorPos(out var cursor);
+        GetWindowRect(Hwnd, out var own);
+        var droppedOnOwnCluster = cursor.X >= own.Left && cursor.X < own.Right && cursor.Y >= own.Top && cursor.Y < own.Bottom;
+        _service.EndDragOut(ViewModel, items, droppedOnOwnCluster);
+    }
+
+    private const uint DROPEFFECT_COPY = 1;
+    private const uint DROPEFFECT_MOVE = 2;
+    private const uint DROPEFFECT_LINK = 4;
+
+    [System.Runtime.InteropServices.DllImport("shell32.dll")]
+    private static extern int SHDoDragDrop(IntPtr hwnd, System.Runtime.InteropServices.ComTypes.IDataObject pdata,
+        IntPtr pdsrc, uint dwEffect, out uint pdwEffect);
 
     private void SelectOnly(ClusterItemViewModel? item)
     {
@@ -310,9 +437,9 @@ public partial class ClusterWindow : Window
         }
 
         var names = Selection.Select(i => i.ParsingName).ToList();
-        var verb = ShellContextMenu.Show(Hwnd, names, ToScreenPixels(e.GetPosition(this)));
-        if (verb == "rename")
-            item.IsRenaming = true;
+        // Windows 11 layout over the shell's own commands; "Show more options" opens the classic menu.
+        ModernShellMenu.Show(Hwnd, names, ToScreenPixels(e.GetPosition(this)), _mouseHook,
+            onRename: () => item.IsRenaming = true);
     }
 
     /// <summary>Right-click on empty Cluster space: the Windows Cluster menu.</summary>

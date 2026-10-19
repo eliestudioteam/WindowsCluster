@@ -19,10 +19,13 @@ public sealed class ClusterItemViewModel : INotifyPropertyChanged
     private string? _infoTip;
     private DispatcherTimer? _refreshTimer;
 
-    public ClusterItemViewModel(string parsingName, string displayName)
+    public ClusterItemViewModel(string parsingName, string? fallbackName = null)
     {
         ParsingName = parsingName;
-        DisplayName = displayName;
+        // The shell's display name follows Explorer's settings (e.g. hidden extensions).
+        DisplayName = ShellItems.GetDisplayName(parsingName)
+            ?? fallbackName
+            ?? System.IO.Path.GetFileName(parsingName);
         _ = LoadIconAsync();
     }
 
@@ -32,7 +35,7 @@ public sealed class ClusterItemViewModel : INotifyPropertyChanged
     public string DisplayName { get; }
 
     /// <summary>How the real item was removed from Explorer's desktop grid while it is in the Cluster.</summary>
-    public HiddenState Hidden { get; init; } = HiddenState.NotHidden;
+    public HiddenState Hidden { get; set; } = HiddenState.NotHidden;
 
     /// <summary>Shell image at the desktop's current icon size; null while loading.</summary>
     public ImageSource? Icon

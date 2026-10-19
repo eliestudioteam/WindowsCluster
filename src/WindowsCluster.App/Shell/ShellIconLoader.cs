@@ -77,17 +77,22 @@ public sealed class ShellIconLoader : IDisposable
         {
             var factory = (IShellItemImageFactory)item;
             var requested = new ShellInterop.SIZE(size, size);
-            // ResizeToFit returns a thumbnail when one exists (images, videos, documents)
-            // and the icon otherwise, matching Explorer's icon views.
-            var hr = factory.GetImage(requested, SIIGBF.ResizeToFit, out var hbitmap);
-            if (hr != 0 || hbitmap == IntPtr.Zero)
-                hr = factory.GetImage(requested, SIIGBF.IconOnly, out hbitmap);
+            // A real thumbnail first (images, videos, documents) so Explorer's treatment can be
+            // added; otherwise ResizeToFit returns the icon, as in Explorer's icon views.
+            var hr = factory.GetImage(requested, SIIGBF.ThumbnailOnly, out var hbitmap);
+            var isThumbnail = hr == 0 && hbitmap != IntPtr.Zero;
+            if (!isThumbnail)
+                hr = factory.GetImage(requested, SIIGBF.ResizeToFit, out hbitmap);
             if (hr != 0 || hbitmap == IntPtr.Zero)
                 return null;
 
             try
             {
-                return ToBitmapSource(hbitmap);
+                var image = ToBitmapSource(hbitmap);
+                if (image is null || !isThumbnail)
+                    return image;
+                var treatment = ThumbnailTreatment.For(path);
+                return treatment == ThumbnailTreatment.None ? image : ThumbnailTreatment.Apply(image, treatment, size);
             }
             finally
             {
@@ -121,7 +126,7 @@ public sealed class ShellIconLoader : IDisposable
     /// negative height lets GDI handle the source orientation, which shell bitmaps do not
     /// report consistently (reading raw DIB bits flipped some icons upside down).
     /// </summary>
-    private static BitmapSource? ToBitmapSource(IntPtr hbitmap)
+    internal static BitmapSource? ToBitmapSource(IntPtr hbitmap)
     {
         if (GetObject(hbitmap, Marshal.SizeOf<DIBSECTION>(), out var dib) == 0)
             return null;

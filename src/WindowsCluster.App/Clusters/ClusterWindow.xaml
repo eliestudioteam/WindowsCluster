@@ -35,6 +35,31 @@
         <SolidColorBrush x:Key="Item.SelectedHoverFill" Color="#6699CCFF" />
         <SolidColorBrush x:Key="Band.Fill" Color="#4D3399FF" />
         <SolidColorBrush x:Key="Band.Border" Color="#CC3399FF" />
+
+        <!-- Explorer's in-place rename box: white, black text, thin border, blue selection. -->
+        <Style x:Key="RenameBox" TargetType="TextBox">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="CaretBrush" Value="Black" />
+            <Setter Property="SelectionBrush" Value="#0078D7" />
+            <Setter Property="SelectionOpacity" Value="0.45" />
+            <Setter Property="BorderBrush" Value="#FF7A7A7A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="1,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <!-- WindowChrome supplies the native resize borders on a borderless window. -->
@@ -130,6 +155,7 @@
                                         ToolTip="{Binding InfoTip}"
                                         ToolTipService.InitialShowDelay="600"
                                         MouseLeftButtonDown="Item_MouseLeftButtonDown"
+                                        MouseMove="Item_MouseMove"
                                         MouseRightButtonUp="Item_MouseRightButtonUp">
                                     <StackPanel>
                                         <!-- Requested at the exact displayed pixel size: Explorer's own artwork. -->
@@ -148,12 +174,11 @@
                                                        TextAlignment="Center"
                                                        TextWrapping="Wrap"
                                                        TextTrimming="CharacterEllipsis"
-                                                       MaxHeight="32" />
+                                                       MaxHeight="32"
+                                                       MouseLeftButtonUp="Label_MouseLeftButtonUp" />
                                             <TextBox Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVisibility}}"
+                                                     Style="{StaticResource RenameBox}"
                                                      Text="{Binding DisplayName, Mode=OneWay}"
-                                                     FontSize="12"
-                                                     Padding="2,1"
-                                                     TextWrapping="Wrap"
                                                      IsVisibleChanged="RenameBox_IsVisibleChanged"
                                                      KeyDown="RenameBox_KeyDown"
                                                      LostKeyboardFocus="RenameBox_LostKeyboardFocus" />
@@ -170,6 +195,9 @@
                                         <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource Item.SelectedBorder}" />
                                         <!-- Selected items show their full name, like Explorer. -->
                                         <Setter TargetName="Label" Property="MaxHeight" Value="1000" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                        <Setter TargetName="Label" Property="Visibility" Value="Hidden" />
                                     </DataTrigger>
                                     <MultiDataTrigger>
                                         <MultiDataTrigger.Conditions>

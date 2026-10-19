@@ -30,6 +30,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Elevated helper mode (see ElevatedAttributes): do the job and quit, no UI.
+        if (ElevatedAttributes.TryRunHelper(e.Args) is int exitCode)
+        {
+            Shutdown(exitCode);
+            return;
+        }
+
         // One instance only: a second launch just brings the Manager of the first to front.
         _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirst);
         _showManagerEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowManagerEventName);

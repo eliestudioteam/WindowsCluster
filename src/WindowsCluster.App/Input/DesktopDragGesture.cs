@@ -118,7 +118,7 @@ public sealed class DesktopDragGesture : IDisposable
     }
 
     /// <summary>The desktop icon list is the SysListView32 inside SHELLDLL_DefView.</summary>
-    private static bool IsDesktopIconList(POINT point)
+    internal static bool IsDesktopIconList(POINT point)
     {
         var hwnd = WindowFromPoint(point);
         return hwnd != IntPtr.Zero &&
